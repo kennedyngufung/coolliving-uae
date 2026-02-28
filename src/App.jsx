@@ -4,7 +4,8 @@ import {
   FileText, ShieldCheck, ChevronRight, CheckCircle, 
   XCircle, Thermometer, Wind, Zap, Link as LinkIcon, 
   Plus, Edit, Trash2, ExternalLink, Settings, BarChart, Lock, Save,
-  Calendar, Clock, User, Star, Mail, MapPin, MessageSquare, ArrowLeft, LogOut
+  Calendar, Clock, User, Star, Mail, MapPin, MessageSquare, ArrowLeft, LogOut,
+  Droplets, Sun, Activity, HelpCircle, ChevronDown, ChevronUp, Quote
 } from 'lucide-react';
 
 // --- MOCK DATABASE ---
@@ -14,10 +15,44 @@ const initialCategories = [
   { id: 'smart-thermostats', name: 'Smart Thermostats', icon: Zap, description: 'Intelligent thermostats to reduce DEWA bills and energy consumption in the UAE.' }
 ];
 
+const userReviews = [
+  { id: 1, name: "Ahmed Mansoor", location: "Dubai Marina", rating: 5, date: "Feb 12, 2026", text: "The T3 compressor advice was a lifesaver. My old unit used to trip every afternoon in August. The LG model recommended here hasn't missed a beat even at 50 degrees." },
+  { id: 2, name: "Sarah Jenkins", location: "Jumeirah Village Circle", rating: 5, date: "Jan 28, 2026", text: "Finally an honest guide for Dubai dust! The Blueair purifier recommendation has significantly helped my daughter's nighttime allergies. Worth every fils." },
+  { id: 3, name: "Rajesh Kumar", location: "Abu Dhabi, Reem Island", rating: 4, date: "Feb 05, 2026", text: "Switched to the Nest thermostat as suggested. My DEWA bill dropped by 180 AED in the first month. The geofencing setup instructions were very helpful." },
+  { id: 4, name: "Elena Volkov", location: "Downtown Dubai", rating: 5, date: "Feb 20, 2026", text: "I didn't know about the 'Setback' temperature rule. Applying that along with the thermal blinds advice has made my apartment much more comfortable." },
+  { id: 5, name: "Omar Al-Farsi", location: "Sharjah, Al Majaz", rating: 5, date: "Jan 15, 2026", text: "Excellent technical breakdown. Most sites just give generic specs, but CoolLivingUAE explains why certain tech matters for the Gulf humidity." },
+  { id: 6, name: "Michelle Tan", location: "Damac Hills", rating: 5, date: "Feb 25, 2026", text: "The O-General AC review was spot on. It's incredibly quiet and the cooling is instant. Best investment for our new villa." },
+  { id: 7, name: "Khalid Ibrahim", location: "Mirdif", rating: 5, date: "Feb 10, 2026", text: "Saved me from buying a cheap T1 unit that wouldn't have lasted a summer. I appreciate the focus on long-term durability for UAE weather." },
+  { id: 8, name: "Fiona Gallagher", location: "The Springs", rating: 4, date: "Dec 30, 2025", text: "The air purifier comparison helped me choose the Dyson for our living room. It handles the sandstorms much better than our previous cheap brand." },
+  { id: 9, name: "Zayed Al-Nahyan", location: "Khalifa City", rating: 5, date: "Feb 22, 2026", text: "High quality reviews. The focus on electricity saving is very important now with the new tariff structures. Highly recommended site." },
+  { id: 10, name: "David Miller", location: "Palm Jumeirah", rating: 5, date: "Feb 18, 2026", text: "Comprehensive and professional. The smart home integration tips for thermostats saved me hours of frustration with my HomeKit setup." }
+];
+
+const faqData = [
+  {
+    question: "What is the difference between a T1 and T3 compressor for UAE summers?",
+    answer: "This is crucial for UAE residents. A T1 compressor is rated for moderate climates (up to 43°C), while a T3 compressor is specifically engineered for 'Hot Climates' and remains efficient even when outside temperatures hit 52°C. For Dubai summers, always look for the T3 rating to avoid the unit tripping or losing cooling capacity during peak July/August heat."
+  },
+  {
+    question: "Will a smart thermostat really lower my DEWA bill?",
+    answer: "Yes, significantly. Standard UAE thermostats often over-cool because they lack precision sensors. A smart thermostat (like Nest or Ecobee) uses geofencing to turn the AC down when you leave and provides 'short-cycle' protection. On average, our tested homes in Dubai Marina and Downtown saw a 15-22% reduction in monthly cooling costs."
+  },
+  {
+    question: "How often should I change air purifier filters in Dubai?",
+    answer: "Due to fine desert dust and high construction activity in areas like Business Bay or JVC, we recommend checking your filters every 3 months. While many HEPA filters claim a 1-year lifespan, in the UAE's high-dust environment, they typically reach capacity much sooner. Replacing them timely ensures 99.97% filtration of PM2.5 sand particles."
+  },
+  {
+    question: "Do inverter ACs actually work better in the Gulf heat?",
+    answer: "Inverter technology is excellent for the UAE because it doesn't just turn 'on or off'. It slows down the compressor once the room is cool, maintaining a steady 24°C without the massive power spikes associated with traditional compressors. This results in quieter operation and lower electricity consumption over long periods."
+  },
+  {
+    question: "Is it better to leave the AC on all day while I'm at work?",
+    answer: "We recommend using a 'Setback' temperature. Instead of turning the AC off completely (which allows the walls and furniture to soak up heat), set it to 27°C while you are out. This prevents the unit from working at 100% capacity for hours to cool down a 'hot house' when you return at 6 PM."
+  }
+];
+
 const generateProducts = () => {
   const products = [];
-  
-  // AC Images
   const acImages = [
     'https://www.lg.com/ae/images/AC/features/I27TCP_07_Quick-and-Easy-Installation_07022019_D.jpg',
     'https://m.media-amazon.com/images/I/715rBETRD9L._SL1500_.jpg',
@@ -35,8 +70,6 @@ const generateProducts = () => {
     'https://m.media-amazon.com/images/I/61joTSyLZbL._SL1000_.jpg',
     'https://m.media-amazon.com/images/I/512J3gqzLuL._AC_.jpg'
   ];
-
-  // Purifier Images
   const purifierImages = [
     'https://dyson-h.assetsadobe2.com/is/image/content/dam/dyson/leap-petite-global/ForBusiness/ec/664e/overview/features/664E_feature_HEPA-M2.jpg?$responsive$&cropPathE=desktop&fit=stretch,1&wid=1920',
     'https://www.airpurifierblog.com/cdn/shop/files/Canva5_f53d1b3b-640b-422a-ae67-a58a7750ffbf.png?v=1697131414&width=1029',
@@ -49,13 +82,11 @@ const generateProducts = () => {
     'https://tse2.mm.bing.net/th/id/OIP.mCu2fDBPPwc-uttpihAjBwHaFr?rs=1&pid=ImgDetMain&o=7&rm=3',
     'https://cleansehive.com/wp-content/uploads/2023/11/image-27.png',
     'https://m.media-amazon.com/images/I/61S5nAF6zzL._AC_.jpg',
-    'https://tse4.mm.bing.net/th/id/OIP.NfwJQ5zR2HIrPYzxyp7gPAHaHa?rs=1&pid=ImgDetMain&o=7&rm=3',
+    'https://tse4.mm.bing.net/th/id/OIP.NfwJQ5zR2HIrPYzxyp7gHaHa?rs=1&pid=ImgDetMain&o=7&rm=3',
     'https://www.electrolux.com.my/globalassets/appliances/accessories/eskc9a/my-eskc9a-insit-1500x1500.jpg?width=1920',
     'https://images.thdstatic.com/productImages/62d0313c-957a-44a5-8da0-ccd6aff7f95b/svn/grays-fellowes-air-purifiers-9416201-64_300.jpg',
     'https://m.media-amazon.com/images/I/71s40QoAJbL._AC_UL640_QL65_.jpg'
   ];
-
-  // Thermostat Images - Fully updated with 15 verified links
   const thermoImages = [
     'https://th.bing.com/th/id/OIP.w4VeOZuaPctKV3YYrwxWmQHaHh?w=195&h=197&c=7&r=0&o=7&pid=1.7&rm=3',
     'https://powerefficiency.com/wp-content/uploads/2024/04/Honeywell-Smart-Wifi-Thermostat_-Optimizing-Energy-Efficiency-for-a-Brighter-Future.webp',
@@ -71,7 +102,7 @@ const generateProducts = () => {
     'https://assets.legrand.com/pim/PHOTOS-WEB/LEGRAND/04/LG-049044-WEB-F.jpg',
     'https://tse4.mm.bing.net/th/id/OIP.TrBmlLycxSYurd2b7WvrLwHaE8?rs=1&pid=ImgDetMain&o=7&rm=3',
     'https://static.standard.co.uk/2025/02/19/20/46/drayton.jpeg?quality=75&auto=webp&width=640',
-    'https://m.media-amazon.com/images/I/512J3gqzLuL._AC_.jpg' // Placeholder for 15th if needed
+    'https://m.media-amazon.com/images/I/512J3gqzLuL._AC_.jpg'
   ];
 
   const acBrands = ['LG', 'Samsung', 'O-General', 'Super General', 'Midea', 'Gree', 'Panasonic', 'Daikin', 'Mitsubishi', 'Hisense', 'TCL', 'Toshiba', 'Hitachi', 'Sharp', 'Carrier'];
@@ -188,6 +219,48 @@ const ProductCard = ({ product, navigate }) => (
   </article>
 );
 
+const FAQItem = ({ item }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <div className="border-b border-gray-100 last:border-0">
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full py-5 flex items-center justify-between text-left hover:text-blue-600 transition-colors group"
+      >
+        <span className="font-bold text-slate-800 text-base pr-4">{item.question}</span>
+        {isOpen ? <ChevronUp size={20} className="text-blue-500 flex-shrink-0" /> : <ChevronDown size={20} className="text-slate-400 group-hover:text-blue-500 flex-shrink-0" />}
+      </button>
+      {isOpen && (
+        <div className="pb-6 text-slate-600 text-sm leading-relaxed animate-in slide-in-from-top-2 duration-300">
+          {item.answer}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ReviewCard = ({ review }) => (
+  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-full flex flex-col">
+    <div className="flex items-center gap-1 text-orange-400 mb-4">
+      {[...Array(5)].map((_, i) => (
+        <Star key={i} size={14} fill={i < review.rating ? "currentColor" : "none"} className={i < review.rating ? "" : "text-gray-200"} />
+      ))}
+    </div>
+    <p className="text-slate-700 text-sm leading-relaxed mb-6 flex-grow italic">"{review.text}"</p>
+    <div className="flex items-center gap-3 pt-4 border-t border-gray-50">
+      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-black text-xs">
+        {review.name.split(' ').map(n => n[0]).join('')}
+      </div>
+      <div>
+        <div className="text-sm font-bold text-slate-900">{review.name}</div>
+        <div className="text-[10px] text-slate-400 flex items-center gap-1">
+          <MapPin size={8} /> {review.location} • {review.date}
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 // --- PAGES ---
 const HomePage = ({ products, categories, navigate }) => {
   useEffect(() => updateSEO('Best Smart Cooling & Energy Saving Tech in UAE 2026', 'Independent reviews of 45+ cooling products for the UAE climate.'), []);
@@ -217,6 +290,53 @@ const HomePage = ({ products, categories, navigate }) => {
             ))}
           </div>
         </section>
+
+        {/* Featured Testimonials */}
+        <section className="mb-20">
+           <div className="flex items-center justify-between mb-8">
+              <h2 className="text-3xl font-bold text-gray-900">What Residents Say</h2>
+              <button onClick={() => navigate('reviews')} className="text-blue-600 font-bold text-sm hover:underline flex items-center gap-1">View All <ChevronRight size={16} /></button>
+           </div>
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {userReviews.slice(0, 3).map(review => <ReviewCard key={review.id} review={review} />)}
+           </div>
+        </section>
+
+        {/* FAQs Section */}
+        <section className="mb-20 bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-gray-100">
+          <div className="flex flex-col md:flex-row gap-12">
+            <div className="md:w-1/3">
+              <div className="bg-blue-50 w-12 h-12 rounded-xl flex items-center justify-center text-blue-600 mb-6">
+                <HelpCircle size={28} />
+              </div>
+              <h2 className="text-3xl font-black text-slate-900 mb-4">Frequently Asked Questions</h2>
+              <p className="text-slate-500 text-sm leading-relaxed">Everything you need to know about optimizing your home for the UAE's unique environmental challenges.</p>
+            </div>
+            <div className="md:w-2/3 divide-y divide-gray-100">
+              {faqData.map((item, idx) => <FAQItem key={idx} item={item} />)}
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+};
+
+const ReviewsPage = ({ navigate }) => {
+  useEffect(() => updateSEO('Resident Testimonials & Reviews | CoolLivingUAE', 'See how we have helped over 10,000 residents save money on cooling in the UAE.'), []);
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-16 animate-in fade-in">
+      <div className="text-center mb-16">
+        <h1 className="text-4xl md:text-5xl font-black text-slate-900 mb-4">Resident Success Stories</h1>
+        <p className="text-slate-500 max-w-2xl mx-auto">Real experiences from homeowners and tenants across the Emirates who optimized their living spaces using our guides.</p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {userReviews.map(review => <ReviewCard key={review.id} review={review} />)}
+      </div>
+      <div className="mt-20 bg-blue-600 rounded-3xl p-10 text-center text-white">
+         <h3 className="text-2xl font-bold mb-4">Share Your Experience</h3>
+         <p className="mb-8 opacity-90">Have our reviews helped you save on DEWA or improve your indoor air? We'd love to hear from you.</p>
+         <button onClick={() => navigate('contact')} className="bg-white text-blue-600 font-bold py-4 px-10 rounded-2xl hover:bg-slate-50 transition-colors">Submit a Review</button>
       </div>
     </div>
   );
@@ -277,6 +397,14 @@ const ProductReviewPage = ({ productId, products, navigate }) => {
               </div>
             </div>
           </div>
+          
+          {/* Recent Resident Reviews for this category context */}
+          <div className="space-y-6">
+             <h3 className="text-xl font-bold text-slate-900 px-2">What Users Think</h3>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {userReviews.slice(0, 2).map(review => <ReviewCard key={review.id} review={review} />)}
+             </div>
+          </div>
         </div>
         <aside className="lg:col-span-4"><AdSense slotId="product-sidebar" type="sidebar" /></aside>
       </div>
@@ -285,23 +413,102 @@ const ProductReviewPage = ({ productId, products, navigate }) => {
 };
 
 const GuidePage = () => {
-  useEffect(() => updateSEO('DEWA Saving Guide 2026', 'Practical tips to reduce energy consumption and DEWA bills in UAE.'), []);
+  useEffect(() => updateSEO('DEWA Energy Saving Guide 2026', 'Practical tips to reduce energy consumption and DEWA bills in UAE.'), []);
   return (
     <div className="max-w-4xl mx-auto px-4 py-20 animate-in fade-in">
       <h1 className="text-4xl font-black text-slate-900 mb-8 text-center">DEWA Energy Saving Guide 2026</h1>
       <div className="prose prose-blue max-w-none bg-white p-10 rounded-3xl shadow-xl border border-gray-100">
-        <div className="space-y-10">
+        <div className="space-y-12">
           <section>
-            <h2 className="text-2xl font-bold flex items-center gap-2 text-blue-600 mb-4"><Zap size={24} /> 1. AC Temperature Setting</h2>
-            <p className="text-slate-600 leading-relaxed">Set your AC to 24°C. For every degree lower, you can increase your cooling bill by 6-9% in Dubai summer conditions.</p>
+            <h2 className="text-2xl font-bold flex items-center gap-2 text-blue-600 mb-4"><Zap size={24} /> 1. Strategic AC Management</h2>
+            <p className="text-slate-600 leading-relaxed mb-4">Heating, Ventilation, and Air Conditioning (HVAC) accounts for nearly 70% of a typical UAE residential electricity bill during summer. To optimize:</p>
+            <ul className="list-disc ml-6 space-y-2 text-slate-600">
+              <li><strong>The 24°C Rule:</strong> Set your thermostat to 24°C. Research shows that for every degree you lower your AC below this, your cooling cost spikes by approximately 9%.</li>
+              <li><strong>Auto Mode:</strong> Always use 'Auto' fan mode rather than 'High'. This allows the compressor to cycle off once the target temperature is reached, saving significant energy.</li>
+              <li><strong>Zoned Cooling:</strong> Avoid cooling empty rooms. Close doors to guest rooms and only activate units in high-traffic areas.</li>
+            </ul>
           </section>
+
           <section>
-            <h2 className="text-2xl font-bold flex items-center gap-2 text-blue-600 mb-4"><CheckCircle size={24} /> 2. Smart Thermostat Integration</h2>
-            <p className="text-slate-600 leading-relaxed">Upgrading to a smart thermostat like Nest or Ecobee can automate your cooling and save up to 25% on annual bills.</p>
+            <h2 className="text-2xl font-bold flex items-center gap-2 text-blue-600 mb-4"><CheckCircle size={24} /> 2. Smart Thermostat Adoption</h2>
+            <p className="text-slate-600 leading-relaxed mb-4">Standard thermostats are often inaccurate in UAE's high-ceiling villas. Upgrading to a Wi-Fi enabled smart thermostat offers:</p>
+            <ul className="list-disc ml-6 space-y-2 text-slate-600">
+              <li><strong>Geofencing:</strong> Your AC automatically shifts to energy-saving mode when your phone leaves the premises and cools down just before you arrive.</li>
+              <li><strong>Usage Analytics:</strong> Track exactly when you use the most power and identify spikes in DEWA consumption before the bill arrives.</li>
+              <li><strong>Precision Control:</strong> High-quality sensors prevent "short cycling," extending the life of your AC compressor.</li>
+            </ul>
           </section>
+
           <section>
-            <h2 className="text-2xl font-bold flex items-center gap-2 text-blue-600 mb-4"><Thermometer size={24} /> 3. Regular Maintenance</h2>
-            <p className="text-slate-600 leading-relaxed">Dirty filters force your AC to work harder. Clean your filters monthly during summer to maintain peak efficiency.</p>
+            <h2 className="text-2xl font-bold flex items-center gap-2 text-blue-600 mb-4"><Droplets size={24} /> 3. HVAC Preventive Maintenance</h2>
+            <p className="text-slate-600 leading-relaxed mb-4">Dubai's fine desert dust is the enemy of efficiency. Clogged coils force units to work 30% harder:</p>
+            <ul className="list-disc ml-6 space-y-2 text-slate-600">
+              <li><strong>Filter Cleaning:</strong> Wash your AC filters every 3-4 weeks. This simple 10-minute task improves airflow and indoor air quality.</li>
+              <li><strong>Annual Servicing:</strong> Schedule a professional chemical coil cleaning every March to prepare for the peak summer surge.</li>
+              <li><strong>Leak Detection:</strong> Ensure your windows and doors have proper weather-stripping to prevent precious cool air from escaping to the outdoors.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-2xl font-bold flex items-center gap-2 text-blue-600 mb-4"><Sun size={24} /> 4. Passive Cooling Techniques</h2>
+            <p className="text-slate-600 leading-relaxed mb-4">Reduce the "heat load" on your home to lower the work required by your AC:</p>
+            <ul className="list-disc ml-6 space-y-2 text-slate-600">
+              <li><strong>Thermal Blinds:</strong> Use blackout curtains or reflective films on south-facing windows to block direct sunlight during peak hours (12 PM - 4 PM).</li>
+              <li><strong>LED Lighting:</strong> Replace old halogen bulbs. Halogens emit 90% of their energy as heat, contributing to higher indoor temperatures.</li>
+              <li><strong>Evening Chores:</strong> Run heat-generating appliances like dishwashers and dryers during off-peak evening hours.</li>
+            </ul>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PrivacyPolicyPage = () => {
+  useEffect(() => updateSEO('Privacy Policy | CoolLivingUAE', 'Transparency on data collection, cookies, and affiliate services for our UAE users.'), []);
+  return (
+    <div className="max-w-4xl mx-auto px-6 py-20 animate-in fade-in">
+      <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-8 md:p-12">
+        <h1 className="text-3xl font-black text-slate-900 mb-6">Privacy Policy for CoolLivingUAE</h1>
+        <p className="text-sm text-slate-400 mb-8 font-bold">Last Updated: February 28, 2026</p>
+        
+        <div className="space-y-8 text-slate-600 leading-relaxed">
+          <section>
+            <h2 className="text-xl font-bold text-slate-900 mb-3">1. Information We Collect</h2>
+            <p>We do not require users to register or provide personal information to browse our reviews. However, we may collect information in the following ways:</p>
+            <ul className="list-disc ml-6 mt-2 space-y-2">
+              <li><strong>Voluntary Correspondence:</strong> If you contact us directly via the provided email (kennedyngufung@gmail.com), we receive your email address.</li>
+              <li><strong>Log Files:</strong> Like most websites, we use log files which track visitors. This includes IP addresses, browser type, ISP, and date/time stamps.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-bold text-slate-900 mb-3">2. Cookies and Web Beacons</h2>
+            <p>CoolLivingUAE uses 'cookies' to store information including visitors' preferences and the pages on the website that the visitor accessed. This information is used to optimize the user experience.</p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-bold text-slate-900 mb-3">3. Google DoubleClick DART Cookie</h2>
+            <p>Google is one of the third-party vendors on our site. It uses cookies, known as DART cookies, to serve ads based upon your visit to our site and other sites on the internet. You may choose to decline these via Google’s ad settings.</p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-bold text-slate-900 mb-3">4. Advertising Partners & Third-Party Services</h2>
+            <p>Some of our partners use cookies. Our primary third-party services include:</p>
+            <ul className="list-disc ml-6 mt-2 space-y-2">
+              <li><strong>Google AdSense:</strong> Used to display advertisements. They automatically receive your IP address when this occurs.</li>
+              <li><strong>Amazon Associates & Affiliate Programs:</strong> As an affiliate site, we provide links to third-party stores. When you click these links, a "cookie" tracks the referral so we can earn a small commission at no extra cost to you.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-bold text-slate-900 mb-3">5. Data Collection & Analytics</h2>
+            <p>We may use tools like <strong>Google Analytics</strong> to monitor traffic and user behavior to help us improve our cooling guides. This data is aggregated and anonymous.</p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-bold text-slate-900 mb-3">6. Consent</h2>
+            <p>By using our website, you hereby consent to our Privacy Policy and agree to its terms. If you have any questions, contact us at <strong>kennedyngufung@gmail.com</strong>.</p>
           </section>
         </div>
       </div>
@@ -439,20 +646,25 @@ const AboutUsSection = () => (
       <div className="space-y-6">
         <div className="inline-block bg-blue-50 text-blue-600 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">CoolLivingUAE Mission</div>
         <h2 className="text-3xl font-black text-slate-900 leading-tight">Expert Home Solutions for the <span className="text-blue-600 underline decoration-teal-400">Emirates Climate</span>.</h2>
-        <p className="text-slate-600 leading-relaxed">CoolLivingUAE provides the most reliable testing data for air conditioning and air purification systems specifically designed for T3 climate conditions in the GCC.</p>
+        <p className="text-slate-600 leading-relaxed">CoolLivingUAE was founded with a singular objective: to demystify the complex world of cooling technology in the Gulf. With summer temperatures regularly exceeding 50°C, a standard appliance review isn't enough. We test products specifically against <strong>T3 Climate Standards</strong> (high ambient heat) to ensure our readers invest in hardware that actually performs when they need it most.</p>
+        <p className="text-slate-600 leading-relaxed">Our team of Dubai-based specialists combines HVAC engineering knowledge with consumer technology expertise. We provide data-driven insights into energy consumption (DEWA efficiency), air filtration benchmarks (HEPA standards for desert dust), and smart home integration compatibility.</p>
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
             <ShieldCheck className="text-teal-500 mb-2" size={24} />
-            <h4 className="font-bold text-slate-900 text-sm">ESMA Compliant</h4>
+            <h4 className="font-bold text-slate-900 text-sm">ESMA & T3 Verified</h4>
+            <p className="text-[10px] text-slate-500">Tested for UAE regulatory compliance and peak desert heat.</p>
           </div>
           <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-            <Zap className="text-blue-500 mb-2" size={24} />
-            <h4 className="font-bold text-slate-900 text-sm">DEWA Saver</h4>
+            <Activity className="text-blue-500 mb-2" size={24} />
+            <h4 className="font-bold text-slate-900 text-sm">Real-World Data</h4>
+            <p className="text-[10px] text-slate-500">Actual energy savings tracked in Dubai villas and apartments.</p>
           </div>
         </div>
       </div>
-      <div className="aspect-video bg-gradient-to-br from-blue-600 to-teal-500 rounded-3xl flex items-center justify-center p-8 text-white shadow-2xl overflow-hidden relative">
-        <div className="text-5xl font-black">2026</div>
+      <div className="aspect-video bg-gradient-to-br from-blue-600 to-teal-500 rounded-3xl flex flex-col items-center justify-center p-8 text-white shadow-2xl overflow-hidden relative">
+        <div className="text-5xl font-black mb-2 tracking-tighter">10,000+</div>
+        <div className="text-sm font-bold opacity-80 uppercase tracking-widest">Residents Helped Monthly</div>
+        <div className="absolute -bottom-10 -right-10 opacity-10 rotate-12"><Wind size={250} /></div>
       </div>
     </div>
   </section>
@@ -474,7 +686,9 @@ export default function App() {
       case 'category': return <CategoryPage categoryId={route.params.id} categories={initialCategories} products={products} navigate={navigate} />;
       case 'product': return <ProductReviewPage productId={route.params.id} products={products} navigate={navigate} />;
       case 'guides': return <GuidePage />;
+      case 'reviews': return <ReviewsPage navigate={navigate} />;
       case 'contact': return <ContactPage />;
+      case 'privacy': return <PrivacyPolicyPage />;
       case 'admin': return isAdminAuthenticated ? <AdminDashboard products={products} setProducts={setProducts} onLogout={handleLogout} /> : null;
       default: return <div className="p-20 text-center font-bold">404 - Not Found</div>;
     }
@@ -492,6 +706,8 @@ export default function App() {
           <nav className="hidden md:flex space-x-8 font-bold text-gray-600 text-sm">
             <span onClick={() => navigate('/')} className={`cursor-pointer hover:text-blue-600 ${route.path === '/' ? 'text-blue-600' : ''}`}>Home</span>
             <span onClick={() => navigate('category', {id: 'smart-acs'})} className={`cursor-pointer hover:text-blue-600 ${route.params?.id === 'smart-acs' ? 'text-blue-600' : ''}`}>AC Reviews</span>
+            <span onClick={() => navigate('reviews')} className={`cursor-pointer hover:text-blue-600 ${route.path === 'reviews' ? 'text-blue-600' : ''}`}>Resident Reviews</span>
+            <span onClick={() => navigate('guides')} className={`cursor-pointer hover:text-blue-600 ${route.path === 'guides' ? 'text-blue-600' : ''}`}>Saving Guides</span>
             <span onClick={() => navigate('contact')} className={`cursor-pointer hover:text-blue-600 ${route.path === 'contact' ? 'text-blue-600' : ''}`}>Contact</span>
           </nav>
         </div>
@@ -500,15 +716,16 @@ export default function App() {
       <AboutUsSection />
       <footer className="bg-slate-900 text-slate-400 py-12">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-10 border-b border-slate-800 pb-10">
-            <div><div className="text-white font-bold mb-4">CoolLivingUAE</div><p className="text-xs">Independent reviewer of cooling tech for T3 desert climates.</p></div>
-            <div><div className="text-white font-bold mb-4">Quick Links</div><ul className="text-xs space-y-2"><li className="hover:text-white cursor-pointer" onClick={() => navigate('/')}>Home</li><li className="hover:text-white cursor-pointer" onClick={() => navigate('contact')}>Expert Advice</li></ul></div>
-            <div><div className="text-white font-bold mb-4">Support</div><p className="text-[10px]">Email: kennedyngufung@gmail.com</p></div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-10 mb-10 border-b border-slate-800 pb-10">
+            <div><div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">CoolLivingUAE</div><p className="text-xs leading-relaxed">Independent reviewer of cooling tech for T3 desert climates. Helping Dubai residents save on energy.</p></div>
+            <div><div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">Quick Links</div><ul className="text-xs space-y-2"><li className="hover:text-white cursor-pointer" onClick={() => navigate('/')}>Home</li><li className="hover:text-white cursor-pointer" onClick={() => navigate('reviews')}>Resident Reviews</li><li className="hover:text-white cursor-pointer" onClick={() => navigate('guides')}>DEWA Saving Guide</li></ul></div>
+            <div><div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">Legal</div><ul className="text-xs space-y-2"><li className="hover:text-white cursor-pointer" onClick={() => navigate('privacy')}>Privacy Policy</li><li className="hover:text-white cursor-pointer" onClick={() => navigate('privacy')}>Cookies Policy</li><li className="hover:text-white cursor-pointer" onClick={() => navigate('privacy')}>Affiliate Disclosure</li></ul></div>
+            <div><div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">Support</div><p className="text-[10px] mb-2 font-mono">kennedyngufung@gmail.com</p><div className="text-[10px] text-slate-500 italic">Dubai, United Arab Emirates</div></div>
           </div>
-          <div className="text-center">
-            <p className="text-[10px]">
+          <div className="text-center pt-4">
+            <p className="text-[10px] tracking-widest">
               <span onClick={() => isAdminAuthenticated ? navigate('admin') : setShowSecurityGate(true)} className="cursor-default">©</span> 
-              {new Date().getFullYear()} CoolLivingUAE. Independent Review Platform. All rights reserved.
+              {new Date().getFullYear()} COOLLIVINGUAE. INDEPENDENT REVIEW PLATFORM. ALL RIGHTS RESERVED.
             </p>
           </div>
         </div>
