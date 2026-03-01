@@ -1,3 +1,5 @@
+import { db } from "./firebase";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Menu, X, Search, ShoppingCart, Home, LayoutList, 
@@ -211,9 +213,18 @@ const ProductCard = ({ product, navigate }) => (
         {product.title}
       </h3>
       <div className="text-lg font-black text-gray-900 mb-4">AED {Number(product.price).toLocaleString()}</div>
-      <div className="mt-auto flex gap-2">
-        <button onClick={() => navigate('product', { id: product.id })} className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 font-bold py-2 rounded-lg transition-colors text-xs border border-gray-100">Full Review</button>
-        <button onClick={() => window.open(product.affiliateLink, '_blank')} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 rounded-lg transition-colors text-xs flex items-center justify-center gap-1">Check Deals</button>
+      
+      <div className="mt-auto space-y-2">
+        <div className="flex gap-2">
+          <button onClick={() => navigate('product', { id: product.id })} className="flex-1 bg-gray-50 hover:bg-gray-100 text-gray-700 font-bold py-2 rounded-lg transition-colors text-xs border border-gray-100">Full Review</button>
+          <button onClick={() => window.open(product.affiliateLink, '_blank')} className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 rounded-lg transition-colors text-xs flex items-center justify-center gap-1">Check Deals</button>
+        </div>
+        <button 
+          onClick={(e) => { e.stopPropagation(); navigate('installation', { id: product.id }); }}
+          className="w-full bg-green-600 text-white py-2 rounded-lg font-bold hover:bg-green-700 transition-all text-xs shadow-sm flex items-center justify-center gap-1"
+        >
+          <Settings size={14} /> Request Installation
+        </button>
       </div>
     </div>
   </article>
@@ -322,6 +333,145 @@ const HomePage = ({ products, categories, navigate }) => {
   );
 };
 
+const InstallationPage = ({ productId, products, navigate }) => {
+  const product = products.find(p => p.id === productId);
+  const [submitted, setSubmitted] = useState(false);
+  const [formData, setFormData] = useState({
+  name: "",
+  phone: "",
+  location: "",
+  propertyType: "",
+  acType: "",
+  acCapacity: "",
+  message: ""
+});
+
+  useEffect(() => updateSEO(`Request Installation - ${product?.brand}`, 'Professional HVAC installation across Dubai, Abu Dhabi and Sharjah.'), [product]);
+
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+
+  try {
+    await addDoc(collection(db, "installationRequests"), {
+      name: formData.name,
+      phone: formData.phone,
+      location: formData.location,
+      propertyType: formData.propertyType,
+      acType: formData.acType,
+      acCapacity: formData.acCapacity,
+      message: formData.message,
+      createdAt: serverTimestamp()
+    });
+
+    alert("Request submitted successfully!");
+
+    // Reset form after submit
+    setFormData({
+      name: "",
+      phone: "",
+      location: "",
+      propertyType: "",
+      acType: "",
+      acCapacity: "",
+      message: ""
+    });
+
+  } catch (error) {
+    console.error("Error saving request:", error);
+    alert("Something went wrong. Please try again.");
+  }
+};
+       
+        
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-20 animate-in slide-in-from-bottom-8">
+      <Breadcrumbs items={[{ name: 'Installation Quote' }]} navigate={navigate} />
+      <div className="bg-white p-8 md:p-12 rounded-3xl shadow-xl border border-gray-100">
+        <div className="flex items-center gap-4 mb-8">
+          <div className="bg-blue-50 p-4 rounded-2xl text-blue-600"><Settings size={32} /></div>
+          <div>
+            <h1 className="text-2xl font-black text-slate-900">Professional Installation</h1>
+            <p className="text-slate-500 text-sm">Certified service for {product?.brand || 'your cooling unit'}</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-400 mb-2">Full Name</label>
+              <input
+  required
+  type="text"
+  value={formData.name}
+  onChange={(e) =>
+    setFormData({ ...formData, name: e.target.value })
+  }
+  placeholder="e.g. Ahmed Mansoor"
+  className="w-full bg-slate-50 border rounded-xl p-4 outline-none focus:border-blue-500"
+/>
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-400 mb-2">
+  Contact Number
+</label>
+
+<input
+  required
+  type="tel"
+  value={formData.phone}
+  onChange={(e) =>
+    setFormData({ ...formData, phone: e.target.value })
+  }
+  placeholder="e.g. 0501234567"
+  className="w-full bg-slate-50 border rounded-xl p-4 outline-none focus:border-blue-500"
+/>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase text-slate-400 mb-2">
+  Emirate / Location
+</label>
+
+<select
+  required
+  value={formData.location}
+  onChange={(e) =>
+    setFormData({ ...formData, location: e.target.value })
+  }
+  className="w-full bg-slate-50 border rounded-xl p-4 outline-none focus:border-blue-500 appearance-none"
+>
+  <option value="">Select your city</option>
+  <option value="Dubai - Marina / JBR / JLT">Dubai - Marina / JBR / JLT</option>
+  <option value="Dubai - Downtown / Business Bay">Dubai - Downtown / Business Bay</option>
+  <option value="Dubai - Other">Dubai - Other</option>
+  <option value="Abu Dhabi City">Abu Dhabi City</option>
+  <option value="Sharjah / Ajman">Sharjah / Ajman</option>
+</select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase text-slate-400 mb-2">Additional Details</label>
+            <textarea
+  placeholder="Tell us about your unit or specific requirements..."
+  rows="4"
+  value={formData.message}
+  onChange={(e) =>
+    setFormData({ ...formData, message: e.target.value })
+  }
+  className="w-full bg-slate-50 border rounded-xl p-4 outline-none focus:border-blue-500"
+></textarea>
+</div>
+          <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black hover:bg-blue-700 transition-all shadow-lg flex items-center justify-center gap-2">
+            Submit Quote Request <ChevronRight size={20} />
+          </button>
+          <p className="text-[10px] text-center text-slate-400 italic font-medium">By submitting, you agree to be contacted by our partner installers.</p>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+
 const ReviewsPage = ({ navigate }) => {
   useEffect(() => updateSEO('Resident Testimonials & Reviews | CoolLivingUAE', 'See how we have helped over 10,000 residents save money on cooling in the UAE.'), []);
   return (
@@ -393,7 +543,10 @@ const ProductReviewPage = ({ productId, products, navigate }) => {
                   <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2"><FileText size={18} className="text-blue-500" /> Professional Verdict</h3>
                   <p className="text-slate-600 leading-relaxed italic text-sm">{product.description}</p>
                 </div>
-                <button onClick={() => window.open(product.affiliateLink, '_blank')} className="w-full bg-orange-500 text-white py-4 rounded-xl font-black hover:bg-orange-600 transition-all shadow-lg flex items-center justify-center gap-2">Check Lowest UAE Price <ExternalLink size={18} /></button>
+                <div className="space-y-3">
+                  <button onClick={() => window.open(product.affiliateLink, '_blank')} className="w-full bg-orange-500 text-white py-4 rounded-xl font-black hover:bg-orange-600 transition-all shadow-lg flex items-center justify-center gap-2">Check Lowest UAE Price <ExternalLink size={18} /></button>
+                  <button onClick={() => navigate('installation', { id: product.id })} className="w-full bg-green-600 text-white py-4 rounded-xl font-black hover:bg-green-700 transition-all shadow-lg flex items-center justify-center gap-2">Get Installation Quote <Settings size={18} /></button>
+                </div>
               </div>
             </div>
           </div>
@@ -689,6 +842,7 @@ export default function App() {
       case 'reviews': return <ReviewsPage navigate={navigate} />;
       case 'contact': return <ContactPage />;
       case 'privacy': return <PrivacyPolicyPage />;
+      case 'installation': return <InstallationPage productId={route.params.id} products={products} navigate={navigate} />;
       case 'admin': return isAdminAuthenticated ? <AdminDashboard products={products} setProducts={setProducts} onLogout={handleLogout} /> : null;
       default: return <div className="p-20 text-center font-bold">404 - Not Found</div>;
     }
