@@ -346,11 +346,39 @@ const InstallationPage = ({ productId, products, navigate }) => {
   message: ""
 });
 
-  useEffect(() => updateSEO(`Request Installation - ${product?.brand}`, 'Professional HVAC installation across Dubai, Abu Dhabi and Sharjah.'), [product]);
+ useEffect(() => {
+    updateSEO(
+      `Request Installation - ${product?.brand}`,
+      "Professional HVAC installation across Dubai, Abu Dhabi and Sharjah."
+    );
+  }, [product]);
 
-  const handleSubmit = async (e) => {
+ 
+if (submitted) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center text-center px-6">
+        <h2 className="text-3xl font-bold mb-4 text-green-600">
+          ✅ Request Submitted Successfully!
+        </h2>
+
+        <p className="text-slate-500 mb-8">
+          Our installation team will contact you shortly.
+        </p>
+
+        <button
+          onClick={() => navigate("/")}
+          className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition">
+          Return to Home
+        </button>
+      </div>
+      );
+  }
+
+ const handleSubmit = async (e) => {
   e.preventDefault();
 
+
+ 
   try {
     await addDoc(collection(db, "installationRequests"), {
       name: formData.name,
@@ -363,8 +391,9 @@ const InstallationPage = ({ productId, products, navigate }) => {
       createdAt: serverTimestamp()
     });
 
-    alert("Request submitted successfully!");
+    setSubmitted(true);   // 👈 THIS triggers success screen
 
+  
     // Reset form after submit
     setFormData({
       name: "",
