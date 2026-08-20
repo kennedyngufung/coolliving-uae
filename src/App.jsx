@@ -1,5 +1,6 @@
-import { db } from "./firebase";
-import { collection, addDoc, getDocs, query, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { db, auth } from "./firebase";
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
+import { collection, addDoc, getDocs, query, where, orderBy, limit as fsLimit, doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Menu, X, Search, ShoppingCart, Home, LayoutList, 
@@ -9,6 +10,17 @@ import {
   Calendar, Clock, User, Star, Mail, MapPin, MessageSquare, ArrowLeft, LogOut,
   Droplets, Sun, Activity, HelpCircle, ChevronDown, ChevronUp, Quote
 } from 'lucide-react';
+import { products as catalogueProducts, formatPriceBand, priceBandMidpoint } from './data/products';
+import { uaeACDatabase } from './data/calculatorAcs';
+import AffiliateLink from './components/AffiliateLink';
+import AffiliateDisclosure from './components/AffiliateDisclosure';
+import { submitReview, fetchApprovedReviews, EMIRATES, LIMITS, REVIEWS_COLLECTION } from './reviews';
+
+/** Blank state for the admin product forms. Mirrors the data/products.js field contract. */
+const EMPTY_PRODUCT_FORM = {
+  title: '', brand: '', category: 'smart-acs', priceMin: '', priceMax: '',
+  editorialScore: '4.5', image: '', amazonQuery: '', description: '', tons: '',
+};
 
 // --- MOCK DATABASE ---
 const initialCategories = [
@@ -17,18 +29,6 @@ const initialCategories = [
   { id: 'smart-thermostats', name: 'Smart Thermostats', icon: Zap, description: 'Intelligent thermostats to reduce DEWA bills and energy consumption in the UAE.' }
 ];
 
-const userReviews = [
-  { id: 1, name: "Ahmed Mansoor", location: "Dubai Marina", rating: 5, date: "Feb 12, 2026", text: "The T3 compressor advice was a lifesaver. My old unit used to trip every afternoon in August. The LG model recommended here hasn't missed a beat even at 50 degrees." },
-  { id: 2, name: "Sarah Jenkins", location: "Jumeirah Village Circle", rating: 5, date: "Jan 28, 2026", text: "Finally an honest guide for Dubai dust! The Blueair purifier recommendation has significantly helped my daughter's nighttime allergies. Worth every fils." },
-  { id: 3, name: "Rajesh Kumar", location: "Abu Dhabi, Reem Island", rating: 4, date: "Feb 05, 2026", text: "Switched to the Nest thermostat as suggested. My DEWA bill dropped by 180 AED in the first month. The geofencing setup instructions were very helpful." },
-  { id: 4, name: "Elena Volkov", location: "Downtown Dubai", rating: 5, date: "Feb 20, 2026", text: "I didn't know about the 'Setback' temperature rule. Applying that along with the thermal blinds advice has made my apartment much more comfortable." },
-  { id: 5, name: "Omar Al-Farsi", location: "Sharjah, Al Majaz", rating: 5, date: "Jan 15, 2026", text: "Excellent technical breakdown. Most sites just give generic specs, but CoolLivingUAE explains why certain tech matters for the Gulf humidity." },
-  { id: 6, name: "Michelle Tan", location: "Damac Hills", rating: 5, date: "Feb 25, 2026", text: "The O-General AC review was spot on. It's incredibly quiet and the cooling is instant. Best investment for our new villa." },
-  { id: 7, name: "Khalid Ibrahim", location: "Mirdif", rating: 5, date: "Feb 10, 2026", text: "Saved me from buying a cheap T1 unit that wouldn't have lasted a summer. I appreciate the focus on long-term durability for UAE weather." },
-  { id: 8, name: "Fiona Gallagher", location: "The Springs", rating: 4, date: "Dec 30, 2025", text: "The air purifier comparison helped me choose the Dyson for our living room. It handles the sandstorms much better than our previous cheap brand." },
-  { id: 9, name: "Zayed Al-Nahyan", location: "Khalifa City", rating: 5, date: "Feb 22, 2026", text: "High quality reviews. The focus on electricity saving is very important now with the new tariff structures. Highly recommended site." },
-  { id: 10, name: "David Miller", location: "Palm Jumeirah", rating: 5, date: "Feb 18, 2026", text: "Comprehensive and professional. The smart home integration tips for thermostats saved me hours of frustration with my HomeKit setup." }
-];
 
 const faqData = [
   {
@@ -53,447 +53,7 @@ const faqData = [
   }
 ];
 
-const generateProducts = () => {
-  const products = [];
-
-  // ── SMART ACs — genuine expert reviews, unique per brand ──
-  const acData = [
-    {
-      id:'ac-1', brand:'LG', title:'LG DualCool I18TCP 1.5 Ton T3 Inverter Split AC',
-      price:1950, rating:4.8, reviewsCount:312,
-      image:'https://m.media-amazon.com/images/I/61BfHFNMEQL._AC_SL1500_.jpg',
-      description:`Our #1 Pick for Dubai Apartments. The LG I18TCP earns top spot through a combination of genuine T3 engineering and smart-home integration that actually works in the UAE. Its Dual Inverter Compressor maintains full rated BTU output even when outdoor temperatures exceed 52°C — a threshold where many budget units throttle or trip the circuit. The gold-fin condenser resists salt-air corrosion in coastal developments like JBR, Palm Jumeirah, and Dubai Creek Harbour. In our 90-day DEWA monitoring study on a 16m² Dubai Marina bedroom, ThinQ geofencing reduced cooling-related electricity consumption by 18% vs manual operation. ESMA 5-star energy label confirmed. Warranty: 5-year compressor, 2-year parts via LG UAE service centres in all seven emirates. Verdict: The best combination of reliability, features, and long-term running cost available on Amazon.ae today.`
-    },
-    {
-      id:'ac-2', brand:'Samsung', title:'Samsung WindFree Elite 2.0 Ton T3 Inverter (AR24BSFCAWKN)',
-      price:2350, rating:4.7, reviewsCount:287,
-      image:'https://m.media-amazon.com/images/I/71DozWpxpBL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Samsung+WindFree+Elite+inverter+ac+2+ton+UAE+T3',
-      description:`Best for Large UAE Living Rooms & Majlis. Samsung's WindFree technology disperses cool air through 23,000 micro-perforations, eliminating the direct cold draft that causes discomfort when guests sit near the unit — a meaningful quality-of-life improvement in UAE social settings. The AI Energy mode learned our 28m² Downtown Dubai test flat's usage patterns within two weeks, automatically pre-cooling before the 6 PM sunset heat peak. Auto Clean function runs a drying cycle after each use, preventing the mould growth that forms inside UAE indoor units due to the extreme indoor–outdoor humidity contrast. Our electricity tracking showed a 22% saving over a non-inverter 2-ton equivalent. Samsung UAE offers a 5-year compressor warranty with same-emirate service within 48 hours.`
-    },
-    {
-      id:'ac-3', brand:'O-General', title:'O-General ASGG18JLCA 1.5 Ton T3 High-Wall Split AC',
-      price:2199, rating:4.9, reviewsCount:198,
-      image:'https://m.media-amazon.com/images/I/51Z3U+0VjCL._AC_SL1000_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=O-General+ASGG+split+ac+1.5+ton+UAE',
-      description:`The UAE Contractor's Personal Choice. When we surveyed 40 Dubai HVAC engineers about which unit they install in their own homes, O-General was named by 31. The ASGG18JLCA uses a heavy-gauge copper evaporator coil and hydrophilic aluminium fin coating that outperformed standard gold fins across our 6-month Sharjah industrial-zone dust test. During our summer stress test at 50°C ambient (Al Quoz, July), this unit never tripped and delivered within 3% of rated BTU output — a result only two of the 15 units we tested achieved. Weakness: the outdoor unit is louder than LG and Samsung at maximum capacity (48 dB vs 38 dB), and the app interface is dated. But if you want a split AC that will still cool efficiently in 12 years: this is the recommendation.`
-    },
-    {
-      id:'ac-4', brand:'Super General', title:'Super General SGS-T24HE3 2.0 Ton T3 Inverter Split AC',
-      price:1399, rating:4.3, reviewsCount:421,
-      image:'https://m.media-amazon.com/images/I/61RM3uiBYiL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Super+General+split+ac+2+ton+inverter+UAE',
-      description:`Best Value UAE-Brand for Sharjah & Northern Emirates. Super General is distributed by General Trading Company (Abu Dhabi) — a UAE-rooted brand with faster local after-sales response times than any multinational brand we benchmarked. The T3-rated SGS-T24HE3 inverter compressor maintains rated BTU output to 46°C ambient, adequate for UAE spring, autumn, and night-time summer conditions. Above 48°C, performance dips approximately 8% — acceptable for Sharjah and Ajman coastal areas, less ideal for inland Al Ain summer peaks. No smartphone app, no Wi-Fi. For JVC, JVT, and Sharjah apartments where monthly DEWA budgets are a priority, this delivers 80% of the performance of a premium brand at 55% of the cost. Arabic and English warranty service across all seven emirates.`
-    },
-    {
-      id:'ac-5', brand:'Midea', title:'Midea MSAGB-18HRFN8 1.5 Ton T3 DC Inverter Split AC',
-      price:1299, rating:4.4, reviewsCount:356,
-      image:'https://m.media-amazon.com/images/I/61joTSyLZbL._SL1000_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Midea+MSAGB+inverter+split+ac+1.5+ton+UAE',
-      description:`Best Value for New UAE Residents Setting Up a Home. Midea manufactures compressor components for several premium brands — their own units deliver equivalent core technology at significantly lower cost. The DC inverter in the MSAGB reaches target temperature 30% faster than AC-inverter competitors in our Abu Dhabi head-to-head test. NetHome Plus app functions reliably on UAE-region iOS and Android. Important caveat: early 2024 batch units had a documented drain pan condensation issue in humidity above 85% RH (common in UAE coastal areas during August). Verify the unit carries a 2025 manufacture date sticker before accepting delivery. Two-year comprehensive warranty via Midea UAE. For a first apartment in Dubai, this is the honest best-value recommendation on Amazon.ae.`
-    },
-    {
-      id:'ac-6', brand:'Gree', title:'Gree GWH18AGD-K6DNA1A 1.5 Ton T3 Wi-Fi Inverter Split AC',
-      price:1199, rating:4.2, reviewsCount:278,
-      image:'https://m.media-amazon.com/images/I/71B3h9YNUBL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Gree+inverter+split+ac+1.5+ton+UAE+wifi',
-      description:`Lowest Price for a Genuine T3 Wi-Fi Inverter in the UAE. Gree is the world's largest air conditioner manufacturer by production volume — a fact most UAE buyers are unaware of. The GWH18AGD uses a T3-certified rotary compressor from Gree's Zhuhai factory, the same production line supplying OEM units to several recognised European appliance brands. The GREE+ app works adequately; the interface is less polished than LG ThinQ. UAE distributor Al Khayyat Investments (Dubai) provides workshop service within 48 hours — faster than most premium brand networks. Our concern: at 39 dB indoor noise, it's one of the louder units in this review. Recommended for a second bedroom, study, or storage room where premium features are unnecessary and running-cost savings are the priority.`
-    },
-    {
-      id:'ac-7', brand:'Panasonic', title:'Panasonic CS-XZ18WKEW 1.5 Ton T3 nanoe-X Inverter AC',
-      price:2499, rating:4.7, reviewsCount:163,
-      image:'https://m.media-amazon.com/images/I/71s40QoAJbL._AC_UL640_QL65_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Panasonic+CS-XZ+nanoe+inverter+split+ac+UAE+1.5+ton',
-      description:`Best UAE Split AC for Allergy Sufferers & Families with Children. The Panasonic CS-XZ is the only residential split AC in our 15-unit test that meaningfully improves indoor air quality while cooling. The nanoe-X generator produces hydroxyl radicals that reduced airborne PM2.5 by 47% in our sealed 20m² test room over four hours — independently verified, not a marketing claim. This matters in Dubai during Shamal dust season (March–May) and near UAE construction corridors like Al Furjan, Dubailand, and Dubai South. The Econavi human-activity sensor adjusts airflow automatically based on room occupancy, reducing energy draw in partially occupied rooms. The weakness is price: you pay a 30% premium over LG DualCool for similar BTU output. For households with asthma, seasonal allergies, or young children — the premium is easily justified.`
-    },
-    {
-      id:'ac-8', brand:'Daikin', title:'Daikin FTXM50UVMA 2.0 Ton T3 Stylish Series Inverter',
-      price:2899, rating:4.8, reviewsCount:144,
-      image:'https://m.media-amazon.com/images/I/61HuUBy7XIL._AC_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Daikin+FTXM+inverter+split+ac+2+ton+UAE',
-      description:`Premium Japanese Engineering — Quietest Operation in This Roundup. Daikin's FTXM Stylish series sets the benchmark for indoor unit aesthetics: the 10 cm profile practically disappears against a white wall, a genuine consideration for premium Downtown Dubai, DIFC, and Abu Dhabi Corniche apartments. The Flash Streamer technology uses high-voltage electrical discharge to decompose formaldehyde and VOCs common in newly furnished UAE homes. The variable-speed outdoor fan maintains precisely the correct heat exchange rate at any ambient temperature, giving this unit the flattest power-consumption curve we measured across all 15 tested units. At 22 dB indoor noise, it is the quietest split AC in this review by a 6 dB margin — a difference clearly perceptible in a silent bedroom at 2 AM. Recommended for master bedrooms in premium villas and serious home-office users. Compressor rated to 52°C ambient with no performance throttling observed.`
-    },
-    {
-      id:'ac-9', brand:'Mitsubishi', title:'Mitsubishi Electric MSZ-EF25VGK 2.0 Ton T3 Kirigamine Zen',
-      price:3299, rating:4.9, reviewsCount:112,
-      image:'https://m.media-amazon.com/images/I/61E7Y+SGTYL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Mitsubishi+Electric+MSZ-EF+Kirigamine+inverter+ac+UAE',
-      description:`Best UAE Split AC for Master Bedroom — Measured Below 19 dB. The Mitsubishi Electric Kirigamine Zen is the only unit across our entire 15-model test to achieve a verified indoor noise level below 20 dB at minimum speed — quieter than a whispered conversation. This requires patented dual-barrier insulation on the fan housing and a slow-start compressor ramp that Mitsubishi has spent three hardware generations refining. For UAE buyers, the critical T3 data point: the outdoor unit is rated to 50°C ambient with verified sustained output at 48°C in our Al Barsha rooftop test. The 3D i-see sensor maps room occupancy in three dimensions, directing cool air away from occupied zones to prevent the direct draft discomfort common in UAE bedrooms during high summer. A long-term investment at AED 3,299 — but one that delivers a quantifiably superior sleep environment and is built to a 15-year service lifespan.`
-    },
-    {
-      id:'ac-10', brand:'Hisense', title:'Hisense AS-12HR4SVDTG 1.0 Ton T3 Inverter Split AC',
-      price:999, rating:4.1, reviewsCount:489,
-      image:'https://m.media-amazon.com/images/I/71hkWvANsxL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Hisense+inverter+split+ac+1+ton+UAE',
-      description:`Best 1-Ton AC Under AED 1,000 — UAE Market. Hisense substantially improved its UAE product line after partnering with Gorenje for European-standard production validation. The AS-12HR4SVDTG 1-ton unit handles rooms up to 14m² effectively in UAE conditions — suited to small bedrooms in Sharjah, Ajman, or studio apartments in JVC. Our earlier criticism of Hisense (inconsistent thermostat calibration causing short-cycling that wastes energy and stresses the compressor) appears resolved in the 2024 production revision: our test unit held within ±0.5°C of setpoint across a 6-hour overnight run. Wi-Fi module connects reliably via the Hi-Smart app. After-sales in the UAE is handled through Al Yousuf Electronics, with 20+ UAE service centres. If your requirement is the cheapest working T3 inverter available for delivery in the UAE today, this is the most honest recommendation we can make.`
-    },
-    {
-      id:'ac-11', brand:'TCL', title:'TCL TAC-18CHSD/TPG11I 1.5 Ton T3 Elite Inverter AC',
-      price:1349, rating:4.3, reviewsCount:334,
-      image:'https://aws-obg-image-lb-3.tcl.com/content/dam/brandsite/global/product/ac/elite/xa73/ksp/1920-1080-TCL-Elite-Series-Inverter-Air-Conditioner.png',
-      affiliateLink:'https://www.amazon.ae/s?k=TCL+Elite+inverter+split+ac+1.5+ton+UAE',
-      description:`Best Mid-Range for UAE Bedrooms of 14–20 m². The TCL Elite series represents a meaningful hardware step above their entry-level range: T3-certified rotary compressor, hydrophilic aluminium fin that handles UAE coastal humidity better than standard coatings, and a 3D airflow system with four-directional motorised louvers that distributes cool air to all room corners. Our 20m² test bedroom in Dubai Silicon Oasis reached 24°C from 33°C in 18 minutes — 3 minutes faster than an equivalent Midea unit. Indoor noise at 38 dB is acceptable for a bedroom environment. Known issue: the TCL Home app occasionally disconnects on Huawei devices using UAE SIMs — TCL UAE released a fix in firmware v2.3.1 which should be applied immediately after installation. Strong Noon.ae presence with frequent promotional pricing makes this regularly available below AED 1,200.`
-    },
-    {
-      id:'ac-12', brand:'Toshiba', title:'Toshiba RAS-18J2KVG-E 1.5 Ton T3 Daiseikai 9 Inverter',
-      price:1799, rating:4.5, reviewsCount:189,
-      image:'https://m.media-amazon.com/images/I/61y5C9L5bxL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Toshiba+Daiseikai+inverter+split+ac+1.5+ton+UAE',
-      description:`Best for UAE Families Prioritising Certified Air Quality. The Toshiba Daiseikai 9 is the only split AC in this review certified by the British Allergy Foundation — an independent validation that goes substantially beyond manufacturer marketing claims. The plasma ioniser generates negative ions that cluster airborne dust particles during UAE Shamal wind events, making them heavy enough to settle out of the breathing zone. This addresses a specific and common UAE problem: fine particulate matter that passes through standard filters. Cooling performance is solid — the T3-rated inverter sustains full output to 48°C ambient without the "summer throttling" we measured in four other units. For UAE families with children experiencing respiratory issues, or residents of older Deira and Bur Dubai buildings with shared HVAC ducting, the air-quality certification justifies the AED 1,799 price over a pure-cooling unit.`
-    },
-    {
-      id:'ac-13', brand:'Hitachi', title:'Hitachi RAS-X18CGP 1.5 Ton T3 Frost Wash Inverter AC',
-      price:2099, rating:4.6, reviewsCount:156,
-      image:'https://m.media-amazon.com/images/I/61n4V-xFJGL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Hitachi+RAS-X+frost+wash+inverter+split+ac+UAE',
-      description:`Best Self-Cleaning Technology Available in the UAE Market. Hitachi's patented Frost Wash is the most effective self-cleaning mechanism we tested. It deliberately freezes the evaporator coil and then rapidly defrosts it — the sudden thermal expansion physically breaks up the biofilm, dust cake, and organic matter that standard "auto-clean" modes merely redistribute. In our 6-month Dubai apartment trial, the Hitachi required one professional coil cleaning vs three for a non-self-cleaning equivalent, saving approximately AED 450 in annual maintenance costs. The Stainless Titanium fin coating provides the strongest corrosion resistance we tested — particularly relevant for sea-facing properties on JBR, Dubai Creek Harbour, and the Abu Dhabi Corniche where salt spray accelerates fin degradation. Twelve months of UAE summer operation across our test fleet produced zero service calls.`
-    },
-    {
-      id:'ac-14', brand:'Sharp', title:'Sharp AY-X18PEV 1.5 Ton T3 Plasmacluster Inverter AC',
-      price:1849, rating:4.5, reviewsCount:201,
-      image:'https://m.media-amazon.com/images/I/71m3lV0QUPL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Sharp+Plasmacluster+inverter+split+ac+UAE+1.5+ton',
-      description:`Best Air Ionisation Technology Without Premium Pricing. Sharp's Plasmacluster releases equal concentrations of positive and negative ions that replicate the ion balance of clean forest air — and it has more published independent research behind it than any competing ionisation technology from other AC brands in this review. A 2024 University of Sharjah study confirmed a 91.3% reduction in airborne bacteria in a sealed 20m² room over 24 hours using this system. In UAE buildings with shared HVAC ducting (common in older Sharjah, Deira, and Bur Dubai properties), this matters for pathogen control. Cooling performance from the T3-rated J-Tech inverter is competent — sustained output confirmed to 46°C ambient. For the harshest UAE peak temperatures in July and August in non-insulated or west-facing rooms, we recommend the O-General as the primary choice and this unit as a secondary-room option.`
-    },
-    {
-      id:'ac-15', brand:'Carrier', title:'Carrier 42QHC18N8S 1.5 Ton T3 Optimax Inverter Split AC',
-      price:2149, rating:4.6, reviewsCount:175,
-      image:'https://m.media-amazon.com/images/I/512J3gqzLuL._AC_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Carrier+Optimax+inverter+split+ac+UAE+1.5+ton',
-      description:`Commercial-Grade Reliability for UAE Long-Term Homeowners. Carrier invented mechanical air conditioning in 1902 and their commercial installations run 24/7 in DIFC office towers, Abu Dhabi government buildings, and Dubai International Airport terminals. The residential Optimax series carries that engineering heritage: a scroll compressor (vs the rotary used by most competitors at this price point) provides smoother operation, lower vibration, and a projected 25% longer operational lifespan. T3 certification is validated to 52°C outdoor ambient — one of the highest confirmed ratings in this roundup. Our 18-month tracking study across 12 Carrier installations in UAE villas recorded zero compressor failures and average DEWA cooling costs 14% below the category mean. If you own your UAE property and plan to remain for 7+ years, the Carrier Optimax returns the strongest total cost of ownership of any unit in this review.`
-    },
-    {
-      id:'ac-16', brand:'Haier', title:'Haier HSU-18HNF03/R3 1.5 Ton T3 Inverter Split AC',
-      price:1249, rating:4.3, reviewsCount:567,
-      image:'https://m.media-amazon.com/images/I/71kHXVzFBWL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Haier+HSU-18HNF+inverter+split+ac+UAE+1.5+ton+T3',
-      description:`Best Entry-Level Option from a Global Manufacturer for UAE. Haier is the world's largest white-goods manufacturer by sales volume and their UAE residential AC range reflects this scale: the HSU-18HNF03/R3 is a T3-certified 1.5-ton inverter unit priced to compete directly with Super General and Midea in the AED 1,200–1,300 bracket. Our Ajman test installation ran continuously through the July–August 2025 heat cycle without a single fault. The DC inverter compressor reaches target temperature 25% faster than a fixed-speed equivalent and holds within ±0.7°C of setpoint — acceptable but trailing LG's ±0.3°C precision. The anti-corrosion coating on the outdoor unit's fins handles coastal UAE humidity adequately; we saw no degradation over 9 months in our JBR balcony unit test. The Self-Cleaning function auto-dries the evaporator coil after each cooling cycle, reducing mould risk common in UAE's indoor–outdoor humidity swings. Wi-Fi via the Haier Smart app requires occasional reconnection on UAE network providers — a minor annoyance. Two-year comprehensive warranty through Haier UAE's 18 service centres across seven emirates. Solid entry-level choice for budget-conscious UAE residents.`
-    },
-    {
-      id:'ac-17', brand:'York', title:'York YHFE18BFSMAEQ 1.5 Ton T3 Inverter Split AC',
-      price:1899, rating:4.5, reviewsCount:134,
-      image:'https://m.media-amazon.com/images/I/512J3gqzLuL._AC_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=York+YHFE+inverter+split+ac+UAE+1.5+ton+T3',
-      description:`The Commercial-Heritage Brand Trusted by UAE Hotel Chains. York — a brand under Johnson Controls — supplies the HVAC systems for more than 300 Dubai hotels, Abu Dhabi government buildings, and ADNOC operational facilities. Their residential range carries this commercial engineering DNA: the YHFE18 uses a scroll compressor identical in design to York's light-commercial units, providing smoother operation and lower vibration than the rotary compressors used by budget competitors. In our 12-month field test across a Jumeirah villa installation, the York operated flawlessly through two complete UAE summers with zero service visits. The outdoor unit's tropical coil coating is validated at 54°C ambient — among the highest confirmed T3 specifications in this review. Energy class: ESMA 5-Star. The inverter algorithm prioritises compressor longevity over peak-speed response, meaning initial cool-down is 3–4 minutes slower than a Midea or Gree equivalent, but the compressor shows less wear at 5-year inspection. For UAE property owners seeking hotel-grade reliability in a residential unit, York's commercial heritage is the genuine differentiator. Available through York UAE's authorised distribution network.`
-    },
-    {
-      id:'ac-18', brand:'Fujitsu', title:'Fujitsu ASTG18KMTC 1.5 Ton T3 High-Performance Inverter AC',
-      price:2299, rating:4.7, reviewsCount:88,
-      image:'https://m.media-amazon.com/images/I/61E7Y+SGTYL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Fujitsu+ASTG18+inverter+split+ac+UAE+1.5+ton+T3',
-      description:`Best Japanese-Engineered AC for UAE Professionals Seeking Maximum Efficiency. Fujitsu General has supplied split AC systems to Japanese hospitals, server rooms, and data centres for 40+ years — precision engineering that translates directly to UAE residential use. The ASTG18KMTC uses Fujitsu's DC Inverter III technology: a variable-speed compressor with an onboard microprocessor making 128 adjustments per second to maintain target temperature with minimal energy overshoot. In our Abu Dhabi Energy Centre efficiency test, the ASTG18 recorded the lowest energy consumption per hour of cooling of any 1.5-ton unit in our roundup at sustained 48°C ambient — 11% below the nearest competitor. The unit is T3-rated to 52°C outdoor ambient. The Weekly Programme timer has 12 independent daily time-slots, allowing precise scheduling for UAE households where occupancy varies significantly between weekdays and Jumu'ah weekends. Indoor unit noise at 19 dB minimum — matched only by Mitsubishi Kirigamine in this review. For UAE residents who prioritise maximum energy efficiency and long-term running cost over initial price, this is our preferred Japanese-brand recommendation. Warranty: 5-year compressor, 2-year parts via Fujitsu General UAE service centres in Dubai and Abu Dhabi.`
-    },
-    {
-      id:'ac-19', brand:'Bosch', title:'Bosch Climate 5000i 1.5 Ton T3 Inverter Split AC',
-      price:1749, rating:4.4, reviewsCount:112,
-      image:'https://m.media-amazon.com/images/I/61n4V-xFJGL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Bosch+Climate+5000i+inverter+split+ac+UAE+1.5+ton',
-      description:`German Engineering Precision for UAE Apartments — Outstanding Build Quality. Bosch's Climate 5000i brings the manufacturing standards of their commercial building-systems division to a residential wall-mounted split AC. The outdoor unit casing uses 1.2 mm galvanised steel — thicker than the 0.8 mm standard used by budget competitors — providing noticeably better vibration damping and long-term structural integrity in UAE rooftop and balcony installations exposed to sandstorm debris. The T3-rated inverter compressor carries an internal temperature tolerance of ±0.05°C — the tightest we measured in a residential unit. In our 30m² Dubai Silicon Oasis test apartment, the Bosch maintained target temperature with zero perceived fluctuation across 8 hours of continuous operation. The EasyAir app (iOS / Android) connects reliably on UAE networks and includes a monthly energy report showing kWh consumed — useful for DEWA bill analysis. The included HEPA-grade pre-filter captures 90% of PM5 particles from UAE construction dust, extending filter change intervals to 6–8 months in most Dubai locations. Five-year comprehensive warranty through Bosch UAE. An excellent choice for residents who want European build quality at a mid-range UAE price.`
-    },
-    {
-      id:'ac-20', brand:'AUX', title:'AUX ASW-H18A4/LNR1 1.5 Ton T3 Budget Inverter Split AC',
-      price:949, rating:4.0, reviewsCount:389,
-      image:'https://m.media-amazon.com/images/I/71B3h9YNUBL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=AUX+inverter+split+ac+1.5+ton+UAE+T3',
-      description:`Cheapest T3 Inverter AC in the UAE Market — Budget Buyers' Starting Point. AUX manufactures OEM compressor assemblies for several recognisable brands — including certain Daikin budget lines — before selling identical hardware under their own label at lower cost. The ASW-H18A4 uses a T3-certified rotary inverter compressor that maintains rated BTU output to 46°C ambient — sufficient for UAE northern coastal areas and shoulder-season temperatures, but dips approximately 12% at July/August peak inland temperatures above 48°C. Our test in a Sharjah Industrial Area installation through a full summer confirmed reliable performance and zero faults. No Wi-Fi, no app, no advanced features — the remote control is basic but functional. Noise at 42 dB is the loudest indoor unit in this review, making it unsuitable for bedrooms; acceptable for workshops, storage rooms, utility spaces, and budget studios where cost is the only constraint. After-sales support is available through AUX UAE distributors in Dubai and Sharjah, but workshop turnaround is slower than major-brand service centres (5–7 days vs 1–2 days). For UAE residents who need T3 cooling in a secondary space and have an absolute budget limit, this is the most honest bottom-of-market recommendation we can make.`
-    },
-  ];
-  acData.forEach(p => products.push({ ...p, category: 'smart-acs' }));
-
-  // ── AIR PURIFIERS — genuine expert reviews ──
-  const purifierData = [
-    {
-      id:'purifier-1', brand:'Dyson', title:'Dyson Purifier Cool Formaldehyde TP09',
-      price:2199, rating:4.8, reviewsCount:523,
-      image:'https://m.media-amazon.com/images/I/31i39FHhNTL._AC_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Dyson+Purifier+Cool+TP09+UAE',
-      description:`Best All-in-One Purifier + Fan for UAE. The TP09 is the first purifier in our test to use a solid-state catalytic filter to destroy formaldehyde continuously and completely — critically important in newly furnished UAE apartments where MDF furniture, curtains, and vinyl flooring off-gas formaldehyde for up to 18 months. In our 30m² Dubai Marina living room test, the TP09 reached Clean Air Delivery Rate (CADR) target within 22 minutes — fastest of the 15 units tested. The Dyson Link app provides real-time PM2.5, PM10, NO2, and VOC readings, genuinely useful during UAE Shamal dust events when outdoor AQI spikes above 200. The bladeless fan function doubles as cooling airflow in the shoulder seasons. Expensive at AED 2,199 but delivers measurable, logged air quality improvement — not a marketing claim.`
-    },
-    {
-      id:'purifier-2', brand:'Blueair', title:'Blueair Blue Pure 211+ Max HEPA Air Purifier',
-      price:899, rating:4.7, reviewsCount:341,
-      image:'https://m.media-amazon.com/images/I/71ZEyjB4xAL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Blueair+Blue+Pure+211+Max+HEPA+UAE',
-      description:`Best Large-Room Purifier for Dubai Villas Under AED 900. The Blue Pure 211+ Max is purpose-built for large spaces: its 560 m³/h CADR rating is the highest in our test at this price point, making it the only sub-AED 1,000 purifier capable of cleaning a full UAE villa majlis (typically 40–60 m²) in one pass per hour. The fabric pre-filter captures UAE coarse desert dust before it reaches the HEPA layer, extending HEPA filter life significantly — a practical consideration given Dubai's construction dust from March to October. Filter replacement costs (AED 180–220 on Amazon.ae) are 40% lower than comparable Dyson filters. The weakness: no app control, no air quality display. For families who want clean air without complexity, this is the most honest value recommendation in our purifier category.`
-    },
-    {
-      id:'purifier-3', brand:'Philips', title:'Philips Series 3000i AC3033/70 HEPA Air Purifier',
-      price:749, rating:4.5, reviewsCount:289,
-      image:'https://m.media-amazon.com/images/I/71bvJFHPL-L._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Philips+Series+3000i+HEPA+air+purifier+UAE',
-      description:`Best Mid-Range for UAE Apartments with Smart Tracking. The Philips Series 3000i uses an AeraSense sensor that detects PM2.5, PM10, and VOC simultaneously — providing a real-time pollution index displayed on the unit and in the Clean Home+ app. In our JVC apartment test during the March 2025 Shamal event, the 3000i detected the PM spike 8 minutes before our manual sensor registered it, automatically ramping to maximum speed. HEPA H13 filtration removes 99.95% of particles to 0.1 micron. Turbo mode clears a 25m² room from AQI 150 to AQI 20 in approximately 35 minutes — confirmed independently. Filter lifespan in UAE conditions (high dust load): replace every 9–10 months rather than the 12-month label. Available at competitive pricing on both Amazon.ae and Noon.`
-    },
-    {
-      id:'purifier-4', brand:'Xiaomi', title:'Xiaomi Smart Air Purifier 4 Pro HEPA',
-      price:599, rating:4.4, reviewsCount:612,
-      image:'https://m.media-amazon.com/images/I/61eMrD-HKGL._AC_SL1000_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Xiaomi+Smart+Air+Purifier+4+Pro+HEPA+UAE',
-      description:`Best Budget Smart Purifier — Exceptional Value for UAE Studio Apartments. The Xiaomi Smart Air Purifier 4 Pro delivers a 500 m³/h CADR and a true HEPA H13 filter for under AED 600 — a combination no competitor matches at this price in the UAE. Mi Home app integration works natively with Google Home, Amazon Alexa, and Apple HomeKit, making it the most compatible smart purifier in this test for existing UAE smart home setups. The OLED display shows real-time PM2.5 concentration in µg/m³. Replacement filters (AED 120 on Amazon.ae) are the cheapest HEPA replacement in our entire roundup. The weakness: Xiaomi's UAE after-sales network is limited; if the unit develops a fault outside the warranty period, repair options are restricted to third-party shops. Buy with that trade-off understood.`
-    },
-    {
-      id:'purifier-5', brand:'Coway', title:'Coway Airmega 400 Smart HEPA Air Purifier',
-      price:1299, rating:4.6, reviewsCount:178,
-      image:'https://m.media-amazon.com/images/I/71tRTvTQWnL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Coway+Airmega+400+Smart+HEPA+air+purifier+UAE',
-      description:`Best for Dual-Zone Coverage in UAE Open-Plan Villas. The Coway Airmega 400's dual-suction design pulls air from both sides simultaneously, achieving 360° coverage that solves the directional airflow limitation of front-intake purifiers in open-plan UAE living areas. The Max2 dual filter system combines activated carbon (for Dubai traffic NOx and kitchen cooking odours) with HEPA H13 in a washable pre-filter assembly. Smart mode uses a real-time air quality sensor to automatically adjust fan speed — in our Damac Hills villa test, it correctly identified cooking events and increased speed within 90 seconds without manual input. Filter lifespan indicator is accurate: our UAE-condition filter degraded at precisely the rate the algorithm predicted. Strong Amazon.ae availability and Noon.ae pricing makes this accessible across the UAE.`
-    },
-    {
-      id:'purifier-6', brand:'Levoit', title:'Levoit Core 600S Smart True HEPA Air Purifier',
-      price:699, rating:4.5, reviewsCount:445,
-      image:'https://m.media-amazon.com/images/I/61E9vwcbUML._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Levoit+Core+600S+HEPA+air+purifier+UAE',
-      description:`Best for Large UAE Rooms Under AED 700. Levoit's Core 600S is the most impressive value proposition in the large-room purifier category for 2026. Its 410 m³/h CADR covers spaces up to 56m² — sufficient for most UAE villa living rooms — with a 3-stage filtration system (pre-filter, HEPA H13, activated carbon) that we verified captures 99.97% of PM2.5 in controlled testing. VeSync app control is stable and responsive; Amazon Alexa and Google Assistant integration functions correctly on UAE Wi-Fi networks. The sleep mode reduces fan noise to 24 dB and dims the display — the quietest large-room purifier in our review. Filter replacement on Amazon.ae is AED 150, with genuine Levoit filters reliably stocked. The unit lacks the air quality display of Philips and Dyson competitors — a minor sacrifice for the price.`
-    },
-    {
-      id:'purifier-7', brand:'Winix', title:'Winix 5500-2 HEPA + PlasmaWave Air Purifier',
-      price:849, rating:4.4, reviewsCount:234,
-      image:'https://m.media-amazon.com/images/I/71pZaTtFmHL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Winix+5500-2+HEPA+PlasmaWave+air+purifier+UAE',
-      description:`Best for UAE Bedrooms with Pet Dander & Odour Concerns. The Winix 5500-2 combines True HEPA filtration with PlasmaWave technology — a controlled ion-generation system that neutralises odours and VOCs without producing ozone above EPA-safe thresholds (independently verified at 0.002 ppm in our lab test). For UAE households with cats or dogs, the washable pre-filter captures pet hair before it reaches the HEPA layer, extending the primary filter replacement cycle to 12–14 months even in UAE high-dust conditions. The Smart sensor detects sudden odour spikes — cooking smoke, cigarette smoke in shared corridors, paint fumes from adjacent renovation — and automatically increases fan speed. Auto mode maintained a consistent AQI below 25 (WHO "Good" threshold) in our 30m² Dubai Springs villa bedroom across 90 nights of continuous testing.`
-    },
-    {
-      id:'purifier-8', brand:'Honeywell', title:'Honeywell HPA300 HEPA Air Purifier UAE',
-      price:799, rating:4.3, reviewsCount:387,
-      image:'https://m.media-amazon.com/images/I/71e0TM4EwNL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Honeywell+HPA300+HEPA+air+purifier+UAE',
-      description:`Best Established Brand for UAE Buyers Who Prefer Simplicity. Honeywell's HPA300 has been a consistently reliable large-room purifier for five years — a track record no newer budget competitor can match. The True HEPA filter removes 99.97% of particles to 0.3 microns, and the activated carbon pre-filter specifically addresses the toluene and benzene off-gassing common in UAE taxis and shared building air systems. Four cleaning levels include a Turbo mode that we timed at 28 minutes to clean a 35m² Dubai apartment from post-cooking AQI 180 to below AQI 30. There is no Wi-Fi, no app, no air quality display. This is a deliberate design choice: simpler electronics means fewer failure points over a 7–10 year lifespan. For UAE residents who want a unit to switch on and forget, this is the most reliable recommendation we can make at the AED 799 price point.`
-    },
-    {
-      id:'purifier-9', brand:'IQAir', title:'IQAir HealthPro Plus Medical-Grade HEPA Air Purifier',
-      price:3499, rating:4.9, reviewsCount:89,
-      image:'https://m.media-amazon.com/images/I/71N6U5dAybL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=IQAir+HealthPro+Plus+HEPA+air+purifier+UAE',
-      description:`Medical-Grade Filtration for UAE Health-Critical Environments. The IQAir HealthPro Plus is used in hospital isolation wards, pharmaceutical clean rooms, and by residents with compromised immune systems — and it is the only purifier in our test that uses a HyperHEPA filter certified to capture particles as small as 0.003 microns (10x finer than standard HEPA). For UAE residents managing chronic respiratory conditions, post-COVID recovery, or undergoing chemotherapy, this is not a consumer choice — it is a clinical recommendation. In our Reem Island Abu Dhabi test during a construction dust event (PM2.5: 280 µg/m³ outdoor), the IQAir maintained PM2.5 below 5 µg/m³ indoors within 45 minutes. Expensive, but justified for its intended users. Available via Amazon.ae with UAE delivery.`
-    },
-    {
-      id:'purifier-10', brand:'Sharp', title:'Sharp FP-J80M-H Plasmacluster HEPA Air Purifier',
-      price:1099, rating:4.5, reviewsCount:167,
-      image:'https://m.media-amazon.com/images/I/61S5nAF6zzL._AC_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Sharp+FP-J80+Plasmacluster+HEPA+air+purifier+UAE',
-      description:`Best Purifier for UAE Mould & Bacteria Control. Sharp's Plasmacluster Ion technology has a volume of published independent research behind it that exceeds any competitor in this review — including a 2023 study confirming 91% reduction of SARS-CoV-2 surface concentration in 60 minutes. For UAE buildings with central AC that rarely gets properly serviced — common in older JBR towers, Marina buildings, and Abu Dhabi corniche apartments — the risk of mould spores and bacterial growth in ductwork is real and documented. The Sharp's dual-function HEPA + Plasmacluster addresses both particulate filtration and biological contamination simultaneously. The FP-J80 covers 46m² effectively and operates at 22 dB in silent mode — the quietest Sharp model available. Filter costs on Amazon.ae are competitive at AED 160 per replacement.`
-    },
-    {
-      id:'purifier-11', brand:'Panasonic', title:'Panasonic F-PXM55A nanoe-X HEPA Air Purifier',
-      price:949, rating:4.6, reviewsCount:143,
-      image:'https://m.media-amazon.com/images/I/71s40QoAJbL._AC_UL640_QL65_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Panasonic+F-PXM55+nanoe+HEPA+air+purifier+UAE',
-      description:`Best for UAE Kitchens & Cooking Odour Elimination. The Panasonic F-PXM55A's nanoe-X technology produces hydroxyl radicals that react with and neutralise airborne cooking odour molecules at the molecular level — not simply masking them with fragrance. In our Dubai kitchen test across 30 cooking sessions (including traditional Gulf spice cooking which produces particularly persistent aromas), the nanoe-X eliminated residual cooking odour within 35 minutes, faster than any competitor. The HEPA H13 filter manages cooking particulates (cooking PM2.5 can reach 500+ µg/m³ in enclosed UAE kitchens without extraction). Econavi sensor automatically increases fan speed when heat or humidity from cooking is detected. A genuine kitchen-use purifier rather than a repurposed bedroom unit — the distinction matters in UAE villa layouts where the kitchen is often adjacent to the main living area.`
-    },
-    {
-      id:'purifier-12', brand:'Electrolux', title:'Electrolux Pure A9 PA91-606GY HEPA Air Purifier',
-      price:1149, rating:4.4, reviewsCount:121,
-      image:'https://m.media-amazon.com/images/I/71bvJFHPL-L._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Electrolux+Pure+A9+HEPA+air+purifier+UAE',
-      description:`Best Scandinavian-Designed Purifier for UAE Design-Conscious Buyers. The Electrolux Pure A9 is the best-designed air purifier available in the UAE market — a genuine home design object rather than a clinical appliance. Beyond aesthetics, the 360° cylindrical HEPA design with no airflow dead spots is functionally superior to directional competitors in centrally placed rooms. The CleanSense IQ sensor continuously monitors PM2.5, PM10, TVOC, and CO2, adjusting performance in real time. Our 6-month Dubai apartment test showed consistent AQI maintenance below 20 in a 25m² space even during the March 2025 Shamal dust event — when outdoor AQI reached 340. The Pure A9 companion app provides weekly air quality reports, useful for UAE landlords providing air quality certification to tenants. Filter replacement on Amazon.ae at AED 200 every 12–15 months in UAE conditions.`
-    },
-    {
-      id:'purifier-13', brand:'Molekule', title:'Molekule Air Pro PECO HEPA Air Purifier',
-      price:1899, rating:4.3, reviewsCount:96,
-      image:'https://m.media-amazon.com/images/I/71pZaTtFmHL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Molekule+Air+Pro+PECO+HEPA+purifier+UAE',
-      description:`Most Innovative Technology for UAE VOC-Heavy Environments. Molekule's PECO (Photo Electrochemical Oxidation) technology doesn't just capture pollutants — it destroys them at the molecular level using a UV-light-activated catalyst. This is particularly relevant for UAE environments with high VOC loads: new building materials, formaldehyde from fitted wardrobes, cleaning product fumes in poorly ventilated bathrooms, and paint fumes from frequent UAE property refurbishments. Standard HEPA filters capture VOC molecules briefly then re-release them when saturated — PECO permanently destroys them. Independent Stanford University testing confirmed PECO's effectiveness against VOCs, bacteria, and viruses. The Air Pro also includes a HEPA layer for standard particulates. At AED 1,899 it targets a specialist market, but for UAE residents in newly completed developments or renovated apartments, the VOC destruction is the feature no other unit offers.`
-    },
-    {
-      id:'purifier-14', brand:'Levoit', title:'Levoit Core 300S Compact Smart HEPA Purifier',
-      price:349, rating:4.5, reviewsCount:891,
-      image:'https://m.media-amazon.com/images/I/51nEWBbFhJL._AC_SL1000_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Levoit+Core+300S+Smart+HEPA+air+purifier+UAE',
-      description:`Best Compact Purifier for UAE Bedrooms Under AED 350. The Levoit Core 300S is the best-selling compact purifier in the UAE on Amazon.ae for good reason: True HEPA H13 filtration, app control via VeSync, and near-silent operation at 24 dB in sleep mode — all under AED 350. Effective room coverage of 20m² makes it well-matched to UAE single bedrooms and home offices. The 360° filtration design (air enters from all sides) eliminates directional airflow dead spots. Three interchangeable filter variants (standard HEPA, toxin absorber with activated carbon, fresh air with additional filtration) allow customisation for specific UAE air quality issues. Available for next-day delivery via Amazon.ae Prime across Dubai, Abu Dhabi, and Sharjah. The most recommended first purifier purchase for UAE residents new to air filtration.`
-    },
-    {
-      id:'purifier-15', brand:'Winix', title:'Winix Zero Pro 4-Stage HEPA Air Purifier',
-      price:1099, rating:4.6, reviewsCount:154,
-      image:'https://m.media-amazon.com/images/I/61E9vwcbUML._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Winix+Zero+Pro+HEPA+air+purifier+UAE',
-      description:`Best 4-Stage Filtration for UAE Families with Multiple Air Quality Concerns. The Winix Zero Pro addresses all four major UAE residential air quality challenges in a single unit: washable fabric pre-filter (coarse desert dust), True HEPA H14 (fine PM2.5 from construction and traffic), activated carbon (NOx from UAE highway proximity and cooking odours), and PlasmaWave ionisation (viral and bacterial neutralisation). No other sub-AED 1,200 purifier in this review covers all four. The physical filter quality is the highest we've measured in this price range — the HEPA media is thicker and more densely packed than any competitor tested, which our airflow resistance measurements confirmed. Smart sensor auto-mode is reliable. In continuous operation across 12 months in a 35m² Jumeirah Village Circle apartment, the unit required no maintenance beyond one pre-filter wash.`
-    },
-    {
-      id:'purifier-16', brand:'Samsung', title:'Samsung AX90T7080WD Bespoke Cube Air Purifier',
-      price:1499, rating:4.6, reviewsCount:203,
-      image:'https://m.media-amazon.com/images/I/71DozWpxpBL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Samsung+AX90+Bespoke+Cube+air+purifier+UAE',
-      description:`Best Design-Forward Purifier for UAE Living Rooms — Samsung Ecosystem Integration. The Samsung Bespoke Cube is the only air purifier in this review designed as a genuine furniture object: the stackable cube format and interchangeable colour panels allow it to integrate into UAE villa interiors without the clinical appearance of most purifiers. Beyond aesthetics, the 3-in-1 filter (pre-filter, HEPA H13, activated carbon deodoriser) delivers a 360 m³/h CADR, covering up to 50m² — appropriate for a UAE villa living room. The SmartThings integration is the strongest ecosystem play in this review: if you have Samsung appliances (washer, fridge, TV, AC), the purifier joins the same app, the same automation routines, and the same SmartThings Hub. For UAE buyers already committed to the Samsung ecosystem, this eliminates the need for a separate purifier app. Auto mode responds quickly to cooking events and dust from open balcony doors during Shamal season. Filter replacement indicator is accurate; Samsung UAE stocks genuine replacement filters on Amazon.ae at AED 230. Weakness: Bespoke colour panels must be ordered separately if you want a non-white finish. A standout choice for design-conscious Samsung-ecosystem households.`
-    },
-    {
-      id:'purifier-17', brand:'Alen', title:'Alen BreatheSmart 75i HEPA Air Purifier',
-      price:1349, rating:4.7, reviewsCount:138,
-      image:'https://m.media-amazon.com/images/I/71tRTvTQWnL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Alen+BreatheSmart+75i+HEPA+air+purifier+UAE',
-      description:`Best Large-Room HEPA for UAE Villas with a Lifetime Warranty. Alen's BreatheSmart 75i covers 75m² per hour — the largest room-coverage rating of any purifier in this review — making it the correct choice for UAE open-plan villa great rooms, double-height majlis spaces, or combined living-dining areas that exceed 50m². The HEPA-Pure filter captures 99.99% of PM2.5 particles to 0.1 microns. The Auto mode SmartSensor responds to PM2.5 spikes with a 2-second lag — the fastest auto-response we measured across all purifiers in this roundup. Critically: Alen provides a lifetime warranty on the unit itself — not a promotional claim but a verified policy. If any component fails, Alen replaces the unit at no cost. For UAE villa owners making a long-term purchase decision, this warranty removes all risk from the investment. The BreatheSmart 75i is quieter than most competitors at 43 dB on maximum speed, with sleep mode at 25 dB. Alen offers a filter subscription service that ships replacements every 12 months automatically — removing the inconvenience of tracking filter lifespan during UAE summer. Strongly recommended for large UAE living spaces where CADR and long-term warranty coverage are the primary decision criteria.`
-    },
-    {
-      id:'purifier-18', brand:'Austin Air', title:'Austin Air HealthMate HM400 True HEPA Air Purifier',
-      price:1999, rating:4.8, reviewsCount:67,
-      image:'https://m.media-amazon.com/images/I/71N6U5dAybL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Austin+Air+HealthMate+HM400+HEPA+purifier+UAE',
-      description:`Most Durable Long-Life Purifier for UAE Residents — 5-Year HEPA Filter. Austin Air builds all units to a standard rarely matched in the consumer purifier market: the HM400's 360° 4-stage filtration system (large-particle pre-filter, medium-particle pre-filter, 15 lbs of activated carbon/zeolite, and True HEPA) has an independently rated 5-year filter lifespan. In UAE conditions with high construction dust loads, we project 3.5–4 years of actual filter life — still 3–4 times longer than any other purifier in this review. This dramatically reduces the total cost of ownership: one AED 800 filter replacement every 4 years vs AED 200–350 every 12 months for competitors. The steel casing (not plastic) resists the UV degradation that affects plastic purifiers left near UAE windows. CADR is 250 m³/h, best suited to rooms up to 40m². No app, no display, no smart features: three-speed manual control only. For UAE residents who want to buy one purifier, install it, and not think about it for 4 years, the Austin Air HealthMate is the most practical long-term choice available. Available via Amazon.ae with UAE delivery.`
-    },
-    {
-      id:'purifier-19', brand:'Rabbit Air', title:'Rabbit Air MinusA2 SPA-780A Ultra-Quiet HEPA Purifier',
-      price:1699, rating:4.6, reviewsCount:94,
-      image:'https://m.media-amazon.com/images/I/61S5nAF6zzL._AC_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Rabbit+Air+MinusA2+SPA-780+HEPA+purifier+UAE',
-      description:`Best Wall-Mountable Purifier for UAE Apartments with Limited Floor Space. The Rabbit Air MinusA2's defining feature for UAE use is its wall-mount capability: the unit can be hung flush against a wall, with zero floor footprint — a genuine advantage in compact Dubai studio apartments, JVC one-bedrooms, and children's bedrooms where floor space is at a premium. When wall-mounted, the MinusA2 distributes purified air more evenly across the room than a floor-standing unit, achieving faster CADR coverage in our 25m² test room. The 6-stage filtration includes a customisable third filter: choose from Toxin Absorber (for UAE new-furniture off-gassing), Odour Remover (for cooking-adjacent rooms), or Germ Defence (for shared accommodation). BioGS HEPA technology uses a dual-filtration layer that reduces bacteria build-up inside the filter itself — a meaningful improvement over single-layer HEPA in UAE's 90%+ summer humidity conditions where filter-internal mould growth can become a problem. Ultra-quiet at 20.8 dB minimum — joint-quietest purifier in this review alongside Panasonic. App control, filter replacement alerts, and scheduling included. Wall-mount kit included in the box. A genuinely space-smart choice for compact UAE living.`
-    },
-    {
-      id:'purifier-20', brand:'Medify', title:'Medify MA-40 Medical-Grade H13 HEPA Air Purifier',
-      price:849, rating:4.5, reviewsCount:276,
-      image:'https://m.media-amazon.com/images/I/51nEWBbFhJL._AC_SL1000_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Medify+MA-40+H13+HEPA+medical+grade+air+purifier+UAE',
-      description:`Best Mid-Range Medical-Grade HEPA for UAE Families Under AED 900. The Medify MA-40 is the most affordable purifier in our review to use a genuine H13 HEPA filter — the standard used in hospital isolation rooms — which removes 99.97% of particles at 0.1 microns, finer than the H12 HEPA used by several more expensive competitors. For UAE families with members recovering from surgery, managing chronic respiratory conditions, or in post-COVID recovery, this medical-grade filtration at AED 849 is the most cost-effective clinical-standard air quality option available. CADR of 330 m³/h covers rooms up to 42m² effectively. The dual-layer H13 filter (inner and outer HEPA layers) means the filter captures pollutants on both intake and secondary passes, achieving near-total PM0.1 removal in our sealed chamber test. Three fan speeds plus sleep mode (24 dB). The touchscreen panel doubles as a real-time PM2.5 display. Filter replacement is AED 180 on Amazon.ae with UAE delivery. For UAE parents prioritising the highest available filtration standard in children's bedrooms without the premium pricing of IQAir or Dyson, the Medify MA-40 is the correct choice.`
-    },
-  ];
-  purifierData.forEach(p => products.push({ ...p, category: 'air-purifiers' }));
-
-  // ── SMART THERMOSTATS — genuine expert reviews ──
-  const thermoData = [
-    {
-      id:'thermo-1', brand:'Nest', title:'Google Nest Learning Thermostat (4th Gen) — UAE Compatible',
-      price:849, rating:4.8, reviewsCount:412,
-      image:'https://m.media-amazon.com/images/I/71B3yZmP9CL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Google+Nest+Learning+Thermostat+UAE+compatible',
-      description:`UAE's Most Proven Smart Thermostat for DEWA Bill Reduction. The 4th-generation Nest Learning Thermostat is the most independently studied smart thermostat for energy savings globally, and our 18-month UAE trial confirmed the pattern: an average 19% reduction in cooling-related DEWA consumption across six Dubai apartments. The learning algorithm requires just 3–5 days to model a UAE household's occupancy patterns and automatically applies "setback" cooling (raising setpoint to 27°C when occupants leave) without manual programming. Geofencing via the Google Home app activates cooling approximately 30 minutes before residents return — consistently delivering a pre-cooled home at arrival. Requires a C-wire for installation in most UAE split systems — verify with your HVAC technician before purchase. Compatible with most 24V UAE split AC and central system control boards.`
-    },
-    {
-      id:'thermo-2', brand:'Ecobee', title:'Ecobee SmartThermostat Premium with SmartSensor — UAE',
-      price:1099, rating:4.7, reviewsCount:287,
-      image:'https://m.media-amazon.com/images/I/81FBqKBrdRL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Ecobee+SmartThermostat+Premium+UAE',
-      description:`Best for UAE Villas with Multiple Rooms — Remote Sensor Technology. The Ecobee's defining advantage for UAE villas is its remote SmartSensor system: place wireless sensors in up to 32 rooms, and the thermostat averages temperature across occupied rooms rather than relying on the single wall-mounted sensor. In UAE two-floor villas, this directly addresses the chronic problem of the ground floor being over-cooled while upper bedrooms remain warm — a consequence of heat rising and single-point sensing. Our 12-month Abu Dhabi villa test showed a 23% DEWA cooling reduction using 4 remote sensors vs the previous standard thermostat. Built-in Amazon Alexa allows voice control without a separate smart speaker. Compatible with UAE 24V systems. Ecobee provides a dedicated UAE installation guide for common Gulf split system wiring configurations.`
-    },
-    {
-      id:'thermo-3', brand:'Honeywell', title:'Honeywell Home T9 Smart Wi-Fi Thermostat UAE',
-      price:649, rating:4.5, reviewsCount:334,
-      image:'https://m.media-amazon.com/images/I/71XhkAKEiDL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Honeywell+Home+T9+Smart+WiFi+Thermostat+UAE',
-      description:`Best Mid-Range Thermostat for UAE Apartments — Simple Setup. The Honeywell T9 is the easiest smart thermostat to install and configure in our test: self-guided app installation requires no tools for most UAE split system setups and the step-by-step UAE wiring guide in the Resideo app covers the three most common UAE HVAC control board types. The Focus Pro sensor detects human presence and adjusts comfort settings automatically — preventing the system from cooling empty rooms during work hours. In our JVC apartment 6-month test, smart scheduling alone (vs constant cooling at 22°C) reduced the July DEWA cooling component by 16%. Geofencing is reliable on UAE network providers (Etisalat/e& and Du tested without issues). Compatible with most 24V UAE central and split systems. Available at competitive pricing on Noon.ae with UAE warranty.`
-    },
-    {
-      id:'thermo-4', brand:'Tado', title:'Tado Smart AC Control V3+ (UAE Split AC Compatible)',
-      price:449, rating:4.4, reviewsCount:221,
-      image:'https://m.media-amazon.com/images/I/51s3qJGmxLL._AC_SL1000_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Tado+Smart+AC+Control+V3+UAE+split+ac',
-      description:`Best Smart Upgrade for ANY Existing UAE Split AC — No Wiring Required. Unlike conventional smart thermostats that require wiring into your HVAC control board, the Tado Smart AC Control is an IR blaster that replaces your existing remote control completely — meaning it works with every split AC brand sold in the UAE without any electrical work. Installation takes under 10 minutes: mount the device near your AC, train it on your remote's IR signals (supports 35,000+ remote codes including all major UAE brands), connect to Wi-Fi. Geofencing, scheduling, and energy reporting then work identically to a wired smart thermostat. For UAE tenants who cannot modify their apartment's HVAC wiring, this is the only practical smart thermostat solution. Tado's energy savings report shows average UAE users save 22% on cooling costs in the first month. Available on Amazon.ae and Noon.ae.`
-    },
-    {
-      id:'thermo-5', brand:'Sensibo', title:'Sensibo Sky Smart AC Controller — UAE Edition',
-      price:399, rating:4.3, reviewsCount:298,
-      image:'https://m.media-amazon.com/images/I/71IhurleEQL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Sensibo+Sky+Smart+AC+Controller+UAE',
-      description:`Best Budget Smart AC Controller for UAE Renters. Sensibo Sky is an IR-based smart AC controller (similar to Tado but priced AED 50 lower) that brings scheduling, geofencing, and remote control to any existing UAE split AC. The Climate React feature is particularly useful in UAE conditions: it monitors both temperature and humidity, automatically switching the AC to dry mode when indoor humidity spikes above your set threshold — a common problem in UAE August when humidity can reach 90% indoors. Sensibo's UAE server response time is faster than Tado for the Middle East region (measured 180ms vs 340ms average command latency). The Sensibo app tracks energy consumption by estimating AC power draw based on operating time and mode — useful for approximating DEWA component before the bill arrives. Compatible with Alexa, Google Home, Apple HomeKit, and Samsung SmartThings.`
-    },
-    {
-      id:'thermo-6', brand:'Schneider', title:'Schneider Electric Wiser Smart Thermostat — UAE HVAC',
-      price:899, rating:4.4, reviewsCount:143,
-      image:'https://m.media-amazon.com/images/I/51Ceejf+6kL._AC_SL1429_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Schneider+Electric+Wiser+smart+thermostat+UAE',
-      description:`Best for UAE Buildings with Schneider Electrical Infrastructure. The Schneider Wiser thermostat is a natural choice for the significant proportion of UAE buildings (particularly in Abu Dhabi government housing, ADNOC staff accommodation, and premium commercial-to-residential conversions) that use Schneider Electric control systems throughout. The Wiser ecosystem integrates thermostats with smart plugs, radiator valves, and lighting on a single platform — important for UAE villa automation projects where a unified system reduces complexity. In standalone mode, the Wiser delivers standard smart thermostat functions: scheduling, app control, geofencing via the Wiser Home app. The occupancy learning algorithm is less sophisticated than Google Nest but reliable. Professional installation recommended for UAE properties with multiple zone control. The Schneider UAE support network (40+ trained service partners) is among the strongest in the country.`
-    },
-    {
-      id:'thermo-7', brand:'Siemens', title:'Siemens RDE100 Smart Wi-Fi Room Thermostat — UAE',
-      price:749, rating:4.3, reviewsCount:112,
-      image:'https://m.media-amazon.com/images/I/71XhkAKEiDL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Siemens+RDE100+smart+wifi+thermostat+UAE',
-      description:`Best for UAE Commercial-Grade Reliability in a Residential Thermostat. Siemens builds building automation systems for Dubai International Airport, Abu Dhabi's Louvre, and the EXPO 2020 district infrastructure — the RDE100 brings that commercial reliability to a residential wall-mounted format. The thermostat uses industrial-specification temperature sensing (±0.1°C accuracy vs ±0.5°C for most consumer units) and a relay rated for 10 years of continuous switching — relevant for UAE cooling systems that cycle hundreds of times daily in summer. App control via the Siemens Home Comfort app is functional, not feature-rich. For UAE property managers, facility managers, or technically inclined homeowners who prioritise reliability and precision over smart-home ecosystem features, the Siemens RDE100 is a professional-grade choice available via Amazon.ae at a competitive residential price point.`
-    },
-    {
-      id:'thermo-8', brand:'Wyze', title:'Wyze Thermostat Smart Wi-Fi — UAE Compatible HVAC',
-      price:349, rating:4.2, reviewsCount:387,
-      image:'https://m.media-amazon.com/images/I/61nt3YX2i7L._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Wyze+Thermostat+smart+wifi+UAE',
-      description:`Most Affordable Wired Smart Thermostat for UAE Budget Buyers. At AED 349, the Wyze Thermostat is the cheapest wired smart thermostat in our review and delivers a genuinely impressive feature set for its price: scheduling, geofencing, home/away automation, and energy usage history tracking. It requires a C-wire, which is present in approximately 70% of UAE central system HVAC installations (split AC wall control boards less commonly — check before purchasing). The Wyze app is intuitive and well-maintained. Our 3-month Dubai Studio City test showed a 13% reduction in cooling costs through schedule optimisation alone — modest compared to Nest's learning algorithm, but real and measurable. Limitations: no remote room sensors, no advanced learning, no occupancy detection beyond geofencing. For a first smart thermostat on a budget, it delivers.`
-    },
-    {
-      id:'thermo-9', brand:'ABB', title:'ABB free@home Smart Thermostat System — UAE Building',
-      price:1299, rating:4.5, reviewsCount:78,
-      image:'https://m.media-amazon.com/images/I/81FBqKBrdRL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=ABB+free+home+smart+thermostat+UAE+building',
-      description:`Best for Whole-Villa UAE Smart Building Automation Integration. ABB's free@home platform is specified by UAE developers in premium villa communities including Emirates Hills, Al Barari, and Saadiyat Island — making it the go-to choice for buyers purchasing into developments that have pre-wired the ABB ecosystem. Unlike standalone thermostats, free@home integrates climate control with lighting, blinds/curtains, access control, and security on a single IP backbone. The DEWA energy savings are achieved through true whole-home optimisation: when external blinds detect direct sun, they close automatically and the thermostat simultaneously reduces cooling setpoint to compensate — a coordination no standalone smart thermostat can replicate. Requires ABB-certified installation, which is available through 15+ UAE-licensed ABB partners. The highest upfront cost in this review, justified only for whole-home automation projects.`
-    },
-    {
-      id:'thermo-10', brand:'Legrand', title:'Legrand Céliane Connected Thermostat — UAE Smart Home',
-      price:999, rating:4.3, reviewsCount:89,
-      image:'https://m.media-amazon.com/images/I/71B3yZmP9CL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Legrand+Celiane+connected+thermostat+UAE',
-      description:`Best European Design Thermostat for UAE Premium Interiors. The Legrand Céliane thermostat is specified by UAE interior designers for high-end projects in Dubai's Design District, DIFC, and Abu Dhabi's Al Maryah Island where the aesthetics of wall-mounted devices matter as much as function. The Céliane range's flush-mounting system — shared with Legrand's complete switch, socket, and AV plate ecosystem — creates a seamless wall surface finish that is architecturally impossible with bulkier competitors. Functionally, it delivers Wi-Fi scheduling, remote app control, and HVAC zone management. The MyHOME app supports up to 12 zones in a single building — suitable for large UAE villas. For buyers already specifying Legrand Céliane switches and sockets throughout their UAE property, this thermostat completes the design language without functional compromise. Available through Legrand UAE's authorised distributor network.`
-    },
-    {
-      id:'thermo-11', brand:'Danfoss', title:'Danfoss ECtemp Smart Wi-Fi Floor Thermostat — UAE Villa',
-      price:849, rating:4.4, reviewsCount:134,
-      image:'https://m.media-amazon.com/images/I/51s3qJGmxLL._AC_SL1000_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Danfoss+ECtemp+Smart+wifi+thermostat+UAE',
-      description:`Best for UAE Villas with Underfloor Heating-Cooling Systems. While uncommon in the UAE, underfloor hydronic systems are being specified in premium Saadiyat Island and Yas Island villa projects for year-round comfort (cooling in summer via chilled water, heating in the brief UAE winter). Danfoss has specialised in underfloor thermal control for 60+ years and the ECtemp Smart provides the precise, modulating temperature control that underfloor systems require — conventional thermostats' binary on/off switching causes uncomfortable floor temperature swings in hydronic systems. The adaptive regulation algorithm learns the thermal mass of your specific floor construction and pre-heats or pre-cools accordingly. For the majority of UAE split-AC properties, this unit has no advantage over a Nest or Ecobee — it is a specialist recommendation for specific system types. Wi-Fi app control and scheduling functions are full-featured for general use.`
-    },
-    {
-      id:'thermo-12', brand:'Honeywell Pro', title:'Honeywell Pro Series TH6320WF2003 Smart Thermostat',
-      price:749, rating:4.3, reviewsCount:198,
-      image:'https://m.media-amazon.com/images/I/71XhkAKEiDL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Honeywell+Pro+Series+TH6320+smart+thermostat+UAE',
-      description:`Best for UAE Property Management — Multi-Unit Fleet Deployment. The Honeywell Pro Series TH6320 is designed for commercial and multi-unit residential deployment: it supports Honeywell's Total Connect Comfort (TCC) Pro platform, which allows property managers to monitor and control thermostat settings across up to 200 units from a single web dashboard. For UAE holiday home operators, serviced apartment companies, and building management firms managing multiple DEWA-billed units, this centralised control directly addresses the problem of vacant units left overcooling at tenants' expense. Individual unit geofencing, vacancy detection, and automatic setback programming can be applied fleet-wide from one dashboard without physical access. The unit itself is straightforward to install and operate; the value is entirely in the management platform. Honeywell UAE provides commercial support and volume pricing through their authorised distributor, Emirates Building Systems.`
-    },
-    {
-      id:'thermo-13', brand:'Nest', title:'Google Nest Thermostat E — UAE Budget Smart Thermostat',
-      price:549, rating:4.4, reviewsCount:276,
-      image:'https://m.media-amazon.com/images/I/71B3yZmP9CL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Google+Nest+Thermostat+E+UAE',
-      description:`Best Budget Smart Thermostat from a Premium Brand — UAE. The Nest Thermostat E delivers the core Nest ecosystem benefits at AED 300 below the flagship Learning Thermostat: geofencing, remote app control, scheduling, and Home/Away automation. The primary differences from the Learning Thermostat are the frosted display (less sharp than the mirror-finish premium model), no metal casing, and no auto-learning algorithm — you set the schedule manually. For UAE residents who don't want to wait 2 weeks for the unit to learn their pattern and prefer manual control from day one, the Nest E is actually the preferred choice. DEWA savings in our test were 14% over 90 days (vs 19% for the Learning Thermostat) — the gap is attributable to the learning algorithm's optimisation, but the Thermostat E's savings are still real and consistent. Compatible with most UAE 24V HVAC systems.`
-    },
-    {
-      id:'thermo-14', brand:'Ecobee', title:'Ecobee SmartThermostat Enhanced — UAE HVAC',
-      price:849, rating:4.6, reviewsCount:167,
-      image:'https://m.media-amazon.com/images/I/81FBqKBrdRL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Ecobee+SmartThermostat+Enhanced+UAE',
-      description:`Best Mid-Range Ecobee for UAE Apartment Owners. The Ecobee SmartThermostat Enhanced sits between Ecobee's entry and premium models — it includes the SmartSensor (one sensor included, expansion to 32 sensors supported), Alexa built-in, and the full Ecobee scheduling and geofencing feature set, but at AED 250 below the Premium model. For a UAE apartment owner (vs villa), one SmartSensor is typically sufficient — the Premium model's multi-sensor advantage scales with villa room count. In our 4-month Dubai Hills Estate test, the Enhanced model with one bedroom sensor achieved a 20% DEWA cooling reduction vs the previous programmable thermostat. The Ecobee support team provides UAE-specific wiring guidance by email within 24 hours — a genuine differentiator when installers encounter unfamiliar UAE HVAC wiring. Compatible with 24V UAE systems; C-wire required.`
-    },
-    {
-      id:'thermo-15', brand:'Tado', title:'Tado Smart Thermostat V3+ Starter Kit — UAE Central HVAC',
-      price:699, rating:4.4, reviewsCount:189,
-      image:'https://m.media-amazon.com/images/I/51s3qJGmxLL._AC_SL1000_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Tado+Smart+Thermostat+V3+Starter+Kit+UAE',
-      description:`Best for UAE Residents Who Travel Frequently — Open Window Detection. Tado's Open Window Detection feature is uniquely valuable for UAE residents who frequently leave balcony doors open in the shoulder seasons (October–December, February–March) while the AC runs — a surprisingly common cause of unnecessary DEWA expenditure. The thermostat's temperature sensor detects the sharp temperature change caused by an open window or door and automatically pauses cooling, resuming when the window is closed. Our Jumeirah Beach Residence test confirmed this feature saved an average of 35 minutes of unnecessary daily cooling per household across October 2025. Tado's geofencing is the most accurate we tested (uses both GPS and mobile network triangulation), reducing false "home" detections on UAE network providers. The Starter Kit includes thermostat, internet bridge, and EU-UAE power adapter. Professional installation recommended for UAE fan coil units.`
-    },
-    {
-      id:'thermo-16', brand:'Emerson', title:'Emerson Sensi Touch 2 Smart Thermostat — UAE HVAC',
-      price:499, rating:4.4, reviewsCount:312,
-      image:'https://m.media-amazon.com/images/I/61nt3YX2i7L._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Emerson+Sensi+Touch+2+smart+thermostat+UAE',
-      description:`Best Value Smart Thermostat for UAE Properties — Arabic UI & Islamic Weekend Scheduling. Emerson is the largest supplier of commercial HVAC controls to UAE district cooling operators and building management systems — the Sensi Touch 2 brings this industrial expertise to a residential price point. The colour touchscreen is the sharpest display in this price tier, with a UAE-appropriate Arabic UI option — a differentiator no other thermostat in this review offers. Geofencing works reliably on both e& and du UAE mobile networks in our 4-month Dubai Hills test. The Sensi app's Flexible Scheduling supports UAE-specific weekly patterns: separate schedules for Islamic weekends (Friday/Saturday), workdays, and Ramadan hours — a level of scheduling granularity genuinely useful for UAE residents that Google Nest and Ecobee do not offer natively. In our 90-day DEWA monitoring comparison, the Sensi Touch 2 achieved a 15% cooling cost reduction vs a conventional programmable thermostat. C-wire required for most UAE central system installations; a C-wire adapter accessory is available separately. Works with Alexa, Google Assistant, and Apple HomeKit without additional bridges. Emerson UAE provides 2-year warranty through their regional distribution partner.`
-    },
-    {
-      id:'thermo-17', brand:'Amazon', title:'Amazon Smart Thermostat — UAE Wi-Fi HVAC',
-      price:279, rating:4.2, reviewsCount:543,
-      image:'https://m.media-amazon.com/images/I/71XhkAKEiDL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Amazon+Smart+Thermostat+wifi+hvac+UAE',
-      description:`Cheapest Smart Thermostat on Amazon.ae — UAE Alexa-Household Entry Point. Amazon's own-brand Smart Thermostat is the most affordable smart thermostat in this review and delivers the core value proposition: remote control via the Alexa app, scheduling, and basic energy reporting. Made in partnership with Resideo (Honeywell Home's spinoff), the hardware is the same quality as the Honeywell T6 Pro with a simplified interface. Alexa voice control is the native primary interface — "Alexa, set the living room to 23 degrees" — which works seamlessly with any Echo device. If your UAE home already has Echo smart speakers (very common in expat households), this is the most frictionless smart thermostat integration available. Geofencing requires location permissions in the Alexa app; in our Dubai Marina test it worked correctly on both UAE network providers. The energy-saving features are schedule-based, not adaptive learning — you program the setback times manually. A no-C-wire USB power adapter is in the box for UAE split systems without C-wire. Not suitable for UAE cassette or VRF systems without additional control interfaces. For an Amazon Alexa household with a single-zone HVAC system and a strict budget, this delivers genuine smart control at the lowest price available on Amazon.ae.`
-    },
-    {
-      id:'thermo-18', brand:'Johnson Controls', title:'Johnson Controls GLAS Smart Thermostat — UAE Buildings',
-      price:1199, rating:4.3, reviewsCount:56,
-      image:'https://m.media-amazon.com/images/I/81FBqKBrdRL._AC_SL1500_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Johnson+Controls+GLAS+smart+thermostat+UAE',
-      description:`Most Technologically Advanced Thermostat in This Review — Built-In Air Quality Monitoring. The Johnson Controls GLAS is the only thermostat in this review with a transparent OLED screen that displays not just temperature but an animated background that reacts to current indoor air quality. Built on Microsoft Azure IoT with Cortana voice control (works in UAE English locale), the GLAS can answer complex queries: "Hey Cortana, how much energy did I use for cooling last week?" More importantly for UAE buyers, the GLAS includes a built-in sensor array monitoring PM2.5, PM10, TVOC, and CO2 simultaneously — effectively eliminating the need for a separate air quality monitor. In our JLT apartment test, the GLAS detected a VOC spike from a neighbour's smoke that entered via shared HVAC ducting and automatically switched to ventilation mode to dilute the contamination. Johnson Controls is the HVAC system integrator for most of Dubai's skyscrapers and UAE government buildings — this thermostat represents their residential application of the same IoT building-intelligence platform. Recommended for UAE smart home builders who want a single device for climate control, air quality monitoring, and voice control. Requires professional installation on UAE 24V systems.`
-    },
-    {
-      id:'thermo-19', brand:'Bosch', title:'Bosch BCC100 Wi-Fi Smart Thermostat — UAE',
-      price:549, rating:4.3, reviewsCount:187,
-      image:'https://m.media-amazon.com/images/I/51Ceejf+6kL._AC_SL1429_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Bosch+BCC100+smart+thermostat+wifi+UAE',
-      description:`Best European-Engineered Mid-Range Smart Thermostat for UAE Apartments. The Bosch BCC100 brings German manufacturing precision to a mid-range price point: a ±0.1°C temperature sensor (matching Siemens, beating most competitors at this price), a 7-day programmable schedule, and reliable Bosch Home Connect app integration that worked without server interruption across all 12 months of our UAE test period. The "Holiday Mode" is particularly useful for UAE expats: set your return date and the unit gradually raises the setpoint to maximum economy for the duration, then begins cooling 90 minutes before your arrival — a feature relevant for residents returning from home leave in South Asia, Europe, or the Philippines. The BCC100 is rated for UAE's 24V HVAC systems with C-wire; no C-wire adapter is included but one is available from Bosch UAE separately. Bosch's UAE distribution (through Bosch Home Appliances, Al Yousuf) provides a 2-year warranty with phone support. Compatible with Alexa and Google Assistant. A reliable choice for UAE residents who prefer European brands and value server uptime over cutting-edge features.`
-    },
-    {
-      id:'thermo-20', brand:'Mysa', title:'Mysa Smart Thermostat for UAE High-Voltage Systems',
-      price:399, rating:4.2, reviewsCount:134,
-      image:'https://m.media-amazon.com/images/I/51s3qJGmxLL._AC_SL1000_.jpg',
-      affiliateLink:'https://www.amazon.ae/s?k=Mysa+smart+thermostat+UAE+high+voltage+240V',
-      description:`Only Smart Thermostat for UAE 240V Electric Fan-Coil & Baseboard Systems. The Mysa thermostat addresses a niche but real UAE requirement: properties in Abu Dhabi, Khalifa City, and some ADNOC housing compounds with 220–240V electric fan-coil units or panel heaters wired directly to mains voltage — systems incompatible with every other smart thermostat in this review, which all require 24V low-voltage control circuits. If your UAE property has a wall-mounted electric heater or fan-coil unit with a direct mains connection (no 24V transformer), Mysa is the only smart thermostat option available without full HVAC rewiring. Installation requires switching off the circuit breaker but no 24V wiring experience — Mysa's step-by-step guide covers UAE-standard wiring configurations. The Mysa app (iOS/Android) provides scheduling, geofencing, and energy monitoring. Alexa and Google Assistant compatible. Our ADNOC housing compound test in Abu Dhabi confirmed 17% monthly energy reduction vs manual operation. Important: if your UAE system runs at 24V (the vast majority of UAE split AC and central systems), choose any other thermostat in this review. Mysa applies only to direct mains-voltage systems — check your wiring before purchasing.`
-    },
-  ];
-  thermoData.forEach(p => products.push({ ...p, category: 'smart-thermostats' }));
-
-  return products;
-};
-
-const initialProducts = generateProducts();
+const initialProducts = catalogueProducts;
 
 // --- SEO ENGINE (Full OG + Twitter + Canonical + JSON-LD) ---
 const updateSEO = (title, description, path = '', imageUrl = '') => {
@@ -593,24 +153,34 @@ const ProductCard = ({ product, navigate }) => {
               alt={product.title}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
         }
-        <div className="absolute top-2 right-2 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow flex items-center gap-1">
-          <Star size={10} fill="currentColor" /> {product.rating}
+        <div
+          className="absolute top-2 right-2 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow flex items-center gap-1"
+          title="CoolLivingUAE editorial score — our own assessment, not a user rating"
+        >
+          <Star size={10} fill="currentColor" /> {product.editorialScore}
         </div>
       </div>
       <div className="p-5 flex flex-col flex-grow">
         <div className="text-[10px] text-blue-500 font-bold mb-1 uppercase tracking-widest">{product.brand}</div>
         <h3 className="font-bold text-gray-900 text-sm leading-tight mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">{product.title}</h3>
-        <div className="text-lg font-black text-gray-900 mb-4">AED {Number(product.price).toLocaleString()}</div>
+        <div className="mb-4">
+          <div className="text-lg font-black text-gray-900">{formatPriceBand(product.priceBand)}</div>
+          <div className="text-[9px] text-slate-400 uppercase tracking-widest">Indicative range</div>
+        </div>
         <div className="mt-auto space-y-2">
           <div className="flex gap-2">
             <button onClick={e => { e.stopPropagation(); navigate('product', { id: product.id }); }}
               className="flex-1 bg-gray-50 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 text-gray-700 font-bold py-2 rounded-lg transition-all text-xs border border-gray-100 flex items-center justify-center gap-1">
               Full Review <ChevronRight size={12} />
             </button>
-            <button onClick={e => { e.stopPropagation(); window.open(product.affiliateLink, '_blank'); }}
-              className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 rounded-lg transition-colors text-xs">
-              Check Deals
-            </button>
+            <AffiliateLink
+              query={product.amazonQuery}
+              trackingLabel={product.title}
+              onNavigate={e => e.stopPropagation()}
+              className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 rounded-lg transition-colors text-xs flex items-center justify-center"
+            >
+              Check Price
+            </AffiliateLink>
           </div>
           <button onClick={e => { e.stopPropagation(); navigate('installation', { id: product.id }); }}
             className="w-full bg-green-600 text-white py-2 rounded-lg font-bold hover:bg-green-700 transition-all text-xs flex items-center justify-center gap-1">
@@ -642,31 +212,61 @@ const FAQItem = ({ item }) => {
   );
 };
 
-const ReviewCard = ({ review }) => (
-  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-full flex flex-col">
-    <div className="flex items-center gap-1 text-orange-400 mb-4">
-      {[...Array(5)].map((_, i) => (
-        <Star key={i} size={14} fill={i < review.rating ? "currentColor" : "none"} className={i < review.rating ? "" : "text-gray-200"} />
-      ))}
-    </div>
-    <p className="text-slate-700 text-sm leading-relaxed mb-6 flex-grow italic">"{review.text}"</p>
-    <div className="flex items-center gap-3 pt-4 border-t border-gray-50">
-      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-black text-xs">
-        {review.name.split(' ').map(n => n[0]).join('')}
+/**
+ * Formats a Firestore timestamp for display. serverTimestamp() resolves
+ * asynchronously, so a freshly written document can briefly carry a null
+ * createdAt — hence the guard.
+ */
+const formatReviewDate = (createdAt) => {
+  if (!createdAt || typeof createdAt.toDate !== 'function') return null;
+  return createdAt.toDate().toLocaleDateString('en-AE', {
+    year: 'numeric', month: 'short', day: 'numeric',
+  });
+};
+
+const initialsOf = (name = '') =>
+  name.trim().split(/\s+/).slice(0, 2).map(n => n[0] || '').join('').toUpperCase() || '?';
+
+const ReviewCard = ({ review }) => {
+  const date = formatReviewDate(review.createdAt);
+  const place = [review.area, review.emirate].filter(Boolean).join(', ');
+  return (
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 h-full flex flex-col">
+      <div className="flex items-center gap-1 text-orange-400 mb-4">
+        {[...Array(5)].map((_, i) => (
+          <Star key={i} size={14} fill={i < review.rating ? "currentColor" : "none"} className={i < review.rating ? "" : "text-gray-200"} />
+        ))}
       </div>
-      <div>
-        <div className="text-sm font-bold text-slate-900">{review.name}</div>
-        <div className="text-[10px] text-slate-400 flex items-center gap-1">
-          <MapPin size={8} /> {review.location} • {review.date}
+      <p className="text-slate-700 text-sm leading-relaxed mb-6 flex-grow">{review.text}</p>
+      <div className="flex items-center gap-3 pt-4 border-t border-gray-50">
+        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-black text-xs">
+          {initialsOf(review.name)}
+        </div>
+        <div>
+          <div className="text-sm font-bold text-slate-900">{review.name}</div>
+          <div className="text-[10px] text-slate-400 flex items-center gap-1">
+            <MapPin size={8} /> {place}{date ? ` • ${date}` : ''}
+          </div>
         </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // --- PAGES ---
 const HomePage = ({ products, categories, navigate }) => {
   useEffect(() => updateSEO('Best Smart Cooling & Energy Saving Tech in UAE 2026', 'Independent reviews of 60+ cooling products for the UAE climate.'), []);
+
+  // Approved resident reviews only. The section stays hidden until real
+  // submissions have been moderated through — an empty testimonial rail is
+  // preferable to inventing one.
+  const [residentReviews, setResidentReviews] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchApprovedReviews(3).then(rows => { if (!cancelled) setResidentReviews(rows); });
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <div className="animate-in fade-in duration-500">
       <section className="bg-gradient-to-br from-blue-900 via-blue-800 to-teal-800 text-white py-20 px-6 rounded-3xl mx-4 my-6 shadow-2xl relative overflow-hidden">
@@ -717,14 +317,14 @@ const HomePage = ({ products, categories, navigate }) => {
           </div>
         </section>
 
-        {/* Featured Testimonials */}
-        <section className="mb-20">
+        {/* Resident reviews — rendered only when moderated submissions exist */}
+        <section className={residentReviews.length > 0 ? 'mb-20' : 'hidden'}>
            <div className="flex items-center justify-between mb-8">
               <h2 className="text-3xl font-bold text-gray-900">What Residents Say</h2>
               <button onClick={() => navigate('reviews')} className="text-blue-600 font-bold text-sm hover:underline flex items-center gap-1">View All <ChevronRight size={16} /></button>
            </div>
            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {userReviews.slice(0, 3).map(review => <ReviewCard key={review.id} review={review} />)}
+              {residentReviews.map(review => <ReviewCard key={review.id} review={review} />)}
            </div>
         </section>
 
@@ -916,21 +516,152 @@ if (submitted) {
 };
 
 
-const ReviewsPage = ({ navigate }) => {
-  useEffect(() => updateSEO('Resident Testimonials & Reviews | CoolLivingUAE', 'See how we have helped over 10,000 residents save money on cooling in the UAE.'), []);
+const ReviewsPage = () => {
+  useEffect(() => updateSEO('Resident Reviews | CoolLivingUAE', 'Experiences shared by UAE residents about cooling and air quality in their homes.'), []);
+
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ name: '', emirate: '', area: '', rating: 5, text: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
+
+  const loadReviews = () => {
+    fetchApprovedReviews(24)
+      .then(setReviews)
+      .finally(() => setLoading(false));
+  };
+  useEffect(loadReviews, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSubmitting(true);
+    try {
+      await submitReview(form);
+      setSubmitted(true);
+      setForm({ name: '', emirate: '', area: '', rating: 5, text: '' });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const inputCls = 'w-full bg-slate-50 border border-slate-200 rounded-xl p-4 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-50 transition-all';
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-16 animate-in fade-in">
       <div className="text-center mb-16">
-        <h1 className="text-4xl md:text-5xl font-black text-slate-900 mb-4">Resident Success Stories</h1>
-        <p className="text-slate-500 max-w-2xl mx-auto">Real experiences from homeowners and tenants across the Emirates who optimized their living spaces using our guides.</p>
+        <h1 className="text-4xl md:text-5xl font-black text-slate-900 mb-4">Resident Reviews</h1>
+        <p className="text-slate-500 max-w-2xl mx-auto">
+          Experiences shared by residents across the Emirates. Every review here was submitted
+          by a visitor and checked by us before publication — we do not write them ourselves.
+        </p>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {userReviews.map(review => <ReviewCard key={review.id} review={review} />)}
-      </div>
-      <div className="mt-20 bg-blue-600 rounded-3xl p-10 text-center text-white">
-         <h3 className="text-2xl font-bold mb-4">Share Your Experience</h3>
-         <p className="mb-8 opacity-90">Have our reviews helped you save on DEWA or improve your indoor air? We'd love to hear from you.</p>
-         <button onClick={() => navigate('contact')} className="bg-white text-blue-600 font-bold py-4 px-10 rounded-2xl hover:bg-slate-50 transition-colors">Submit a Review</button>
+
+      {loading ? (
+        <div className="text-center py-16 text-slate-400 font-bold">Loading reviews…</div>
+      ) : reviews.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {reviews.map(review => <ReviewCard key={review.id} review={review} />)}
+        </div>
+      ) : (
+        <div className="bg-slate-50 border border-slate-200 rounded-3xl p-12 text-center">
+          <MessageSquare size={40} className="text-slate-300 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-slate-700 mb-2">No reviews published yet</h2>
+          <p className="text-slate-500 text-sm max-w-md mx-auto">
+            We have just opened submissions. If you have bought or lived with any of the
+            products we cover, yours could be the first — use the form below.
+          </p>
+        </div>
+      )}
+
+      <div className="mt-20 bg-white rounded-3xl border border-gray-100 shadow-sm p-8 md:p-12 max-w-3xl mx-auto">
+        <h2 className="text-2xl font-black text-slate-900 mb-2">Share Your Experience</h2>
+        <p className="text-slate-500 text-sm mb-8">
+          Tell other UAE residents what worked in your home. Submissions are reviewed before
+          they appear, usually within a few days. We publish your name and emirate only —
+          never contact details.
+        </p>
+
+        {submitted ? (
+          <div className="bg-green-50 border border-green-200 rounded-2xl p-8 text-center">
+            <CheckCircle size={40} className="text-green-500 mx-auto mb-4" />
+            <h3 className="font-bold text-green-900 mb-2">Thank you — your review has been received.</h3>
+            <p className="text-green-800 text-sm mb-6">It will appear on this page once we have checked it.</p>
+            <button onClick={() => setSubmitted(false)} className="text-green-700 font-bold text-sm hover:underline">
+              Submit another review
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm font-bold" role="alert">
+                {error}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div>
+                <label htmlFor="review-name" className="block text-xs font-bold uppercase text-slate-400 mb-2">Your Name</label>
+                <input id="review-name" className={inputCls} required
+                  maxLength={LIMITS.name.max} value={form.name}
+                  onChange={e => setForm({ ...form, name: e.target.value })} />
+              </div>
+              <div>
+                <label htmlFor="review-emirate" className="block text-xs font-bold uppercase text-slate-400 mb-2">Emirate</label>
+                <select id="review-emirate" className={inputCls} required value={form.emirate}
+                  onChange={e => setForm({ ...form, emirate: e.target.value })}>
+                  <option value="">Select…</option>
+                  {EMIRATES.map(em => <option key={em} value={em}>{em}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="review-area" className="block text-xs font-bold uppercase text-slate-400 mb-2">Area <span className="normal-case font-medium text-slate-300">(optional)</span></label>
+              <input id="review-area" className={inputCls} placeholder="e.g. Dubai Marina"
+                maxLength={LIMITS.area.max} value={form.area}
+                onChange={e => setForm({ ...form, area: e.target.value })} />
+            </div>
+
+            <div>
+              <span className="block text-xs font-bold uppercase text-slate-400 mb-2">Your Rating</span>
+              <div className="flex gap-2">
+                {[1, 2, 3, 4, 5].map(n => (
+                  <button key={n} type="button" onClick={() => setForm({ ...form, rating: n })}
+                    aria-label={`${n} star${n > 1 ? 's' : ''}`}
+                    aria-pressed={form.rating === n}
+                    className={`w-12 h-12 rounded-xl border-2 flex items-center justify-center transition-all ${form.rating >= n ? 'bg-orange-400 border-orange-400 text-white' : 'bg-slate-50 border-slate-200 text-slate-300'}`}>
+                    <Star size={18} fill="currentColor" />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="review-text" className="block text-xs font-bold uppercase text-slate-400 mb-2">Your Experience</label>
+              <textarea id="review-text" rows={6} className={inputCls} required
+                minLength={LIMITS.text.min} maxLength={LIMITS.text.max}
+                placeholder="What did you buy, and how has it performed in your home?"
+                value={form.text}
+                onChange={e => setForm({ ...form, text: e.target.value })} />
+              <div className="text-[10px] text-slate-400 mt-1 text-right">
+                {form.text.length} / {LIMITS.text.max}
+              </div>
+            </div>
+
+            <button type="submit" disabled={submitting}
+              className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black hover:bg-blue-700 transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+              {submitting ? 'Submitting…' : <>Submit Review <ChevronRight size={20} /></>}
+            </button>
+            <p className="text-[10px] text-center text-slate-400 font-medium">
+              We publish your name and emirate. Reviews that are promotional, abusive, or
+              cannot be attributed to genuine experience are not published.
+            </p>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -949,6 +680,7 @@ const CategoryPage = ({ categoryId, categories, products, navigate }) => {
            <p className="text-gray-600 max-w-2xl">{category?.description}</p>
         </div>
       </div>
+      <AffiliateDisclosure className="mb-8" />
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
         <div className="lg:col-span-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
@@ -975,32 +707,47 @@ const ProductReviewPage = ({ productId, products, navigate }) => {
               <div className="relative">
                 <img src={product.image} alt={product.title} className="w-full rounded-2xl shadow-lg border border-gray-100 object-cover aspect-square" />
                 <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm p-3 rounded-xl shadow-sm border border-gray-100">
-                   <div className="text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Performance Score</div>
-                   <div className="text-2xl font-black text-blue-600 flex items-center gap-1">{product.rating} <Star size={20} fill="currentColor" /></div>
+                   <div className="text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Editorial Score</div>
+                   <div className="text-2xl font-black text-blue-600 flex items-center gap-1">{product.editorialScore} <Star size={20} fill="currentColor" /></div>
+                   <div className="text-[9px] text-slate-400 mt-1">CoolLivingUAE assessment</div>
                 </div>
               </div>
               <div className="flex flex-col">
-                <div className="text-blue-600 font-bold uppercase tracking-widest text-xs mb-2">{product.brand} • Professional Review</div>
+                <div className="text-blue-600 font-bold uppercase tracking-widest text-xs mb-2">{product.brand} • Editorial Review</div>
                 <h1 className="text-3xl font-extrabold mb-4 text-slate-900 leading-tight">{product.title}</h1>
-                <div className="text-3xl font-black mb-6 text-slate-900">AED {Number(product.price).toLocaleString()}</div>
-                <div className="bg-slate-50 rounded-2xl p-6 mb-6 border border-slate-100">
-                  <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2"><FileText size={18} className="text-blue-500" /> Professional Verdict</h3>
-                  <p className="text-slate-600 leading-relaxed italic text-sm">{product.description}</p>
+                <div className="mb-6">
+                  <div className="text-3xl font-black text-slate-900">{formatPriceBand(product.priceBand)}</div>
+                  <div className="text-xs text-slate-400 mt-1">Indicative range — check the retailer for the current price.</div>
                 </div>
+                <div className="bg-slate-50 rounded-2xl p-6 mb-6 border border-slate-100">
+                  <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2"><FileText size={18} className="text-blue-500" /> Our Verdict</h3>
+                  <p className="text-slate-600 leading-relaxed text-sm">{product.description}</p>
+                </div>
+                <AffiliateDisclosure className="mb-4" />
                 <div className="space-y-3">
-                  <button onClick={() => window.open(product.affiliateLink, '_blank')} className="w-full bg-orange-500 text-white py-4 rounded-xl font-black hover:bg-orange-600 transition-all shadow-lg flex items-center justify-center gap-2">Check Lowest UAE Price <ExternalLink size={18} /></button>
+                  <AffiliateLink
+                    query={product.amazonQuery}
+                    trackingLabel={product.title}
+                    className="w-full bg-orange-500 text-white py-4 rounded-xl font-black hover:bg-orange-600 transition-all shadow-lg flex items-center justify-center gap-2"
+                  >
+                    Check Price on Amazon.ae <ExternalLink size={18} />
+                  </AffiliateLink>
                   <button onClick={() => navigate('installation', { id: product.id })} className="w-full bg-green-600 text-white py-4 rounded-xl font-black hover:bg-green-700 transition-all shadow-lg flex items-center justify-center gap-2">Get Installation Quote <Settings size={18} /></button>
                 </div>
               </div>
             </div>
           </div>
-          
-          {/* Recent Resident Reviews for this category context */}
-          <div className="space-y-6">
-             <h3 className="text-xl font-bold text-slate-900 px-2">What Users Think</h3>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {userReviews.slice(0, 2).map(review => <ReviewCard key={review.id} review={review} />)}
-             </div>
+
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+            <h3 className="text-xl font-bold text-slate-900 mb-3">How we assess these products</h3>
+            <p className="text-slate-600 text-sm leading-relaxed">
+              Our verdicts are editorial opinions formed from manufacturer specifications,
+              published certifications and independent research, and the UAE service and
+              warranty terms each brand offers. We weight T3 compressor certification,
+              corrosion resistance, and after-sales coverage heavily, because those are the
+              factors that determine whether a unit still performs after several Gulf summers.
+              Where we have not tested a product ourselves, we do not claim to have done so.
+            </p>
           </div>
         </div>
         <aside className="lg:col-span-4"><AdSense slotId="product-sidebar" type="sidebar" /></aside>
@@ -1224,7 +971,7 @@ const AffiliateDisclosurePage = () => {
         <div className="bg-orange-50 border border-orange-100 rounded-2xl p-6 mb-10">
           <div className="flex items-start gap-3">
             <CheckCircle size={20} className="text-orange-500 flex-shrink-0 mt-0.5" />
-            <p className="text-orange-900 text-sm leading-relaxed font-medium"><strong>Plain-Language Summary:</strong> Some links on CoolLivingUAE point to products on Amazon.ae, Noon.ae, and other UAE retailers. If you click one of those links and make a purchase, we may earn a small commission — at <strong>absolutely no extra cost to you</strong>. This is how we fund our independent research. Our editorial opinions are never influenced by these partnerships.</p>
+            <p className="text-orange-900 text-sm leading-relaxed font-medium"><strong>Plain-Language Summary:</strong> Some links on CoolLivingUAE point to products on Amazon.ae and Noon.ae. If we hold an affiliate relationship with a retailer at the time you click, and you go on to buy, we may earn a small commission — at <strong>absolutely no extra cost to you</strong>. This is how we intend to fund our independent research. Our editorial opinions are never influenced by these arrangements.</p>
           </div>
         </div>
 
@@ -1236,13 +983,13 @@ const AffiliateDisclosurePage = () => {
 
           <section>
             <h2 className="text-xl font-bold text-slate-900 mb-4">Our Affiliate Partnerships</h2>
-            <p className="mb-6">We are participants in the following affiliate programmes. Clicking our links and purchasing through them supports the site:</p>
+            <p className="mb-6">We describe our commercial position accurately, including where a relationship does not yet exist:</p>
             <div className="space-y-4">
               {[
-                { name: 'Amazon.ae Associates Programme', icon: '🛒', desc: 'As an Amazon Associate, we earn from qualifying purchases. When you click any "Check Deals" or product link pointing to Amazon.ae, Amazon may award us a commission (typically 3–8% depending on the product category) if you complete a purchase within 24 hours of clicking.', color: 'bg-yellow-50 border-yellow-100' },
-                { name: 'Noon.ae Affiliate Network', icon: '🟡', desc: 'We partner with Noon, the UAE\'s leading e-commerce platform. Purchases made via our Noon links may earn us a referral fee under their standard affiliate terms. The commission window is typically 30 days.', color: 'bg-yellow-50 border-yellow-100' },
-                { name: 'Google AdSense', icon: '📊', desc: 'Our site may display contextual advertisements served by Google AdSense. We earn revenue when users interact with these ads. Google\'s advertising is independent of our editorial content.', color: 'bg-blue-50 border-blue-100' },
-                { name: 'Direct Brand Partnerships', icon: '🤝', desc: 'Occasionally, HVAC brands or distributors may sponsor content (e.g., "Sponsored Review" clearly labelled). Sponsored content is always disclosed at the top of the relevant page and does not alter our testing methodology.', color: 'bg-green-50 border-green-100' },
+                { name: 'Amazon.ae Associates Programme', icon: '🛒', desc: 'We intend to participate in the Amazon Associates Programme. Where we are an approved participant, we earn from qualifying purchases: clicking a product link to Amazon.ae may award us a commission if you complete a purchase within Amazon\'s standard attribution window. Commission rates are set by Amazon and vary by product category. Until approval is granted, our Amazon links carry no tracking and earn us nothing.', color: 'bg-yellow-50 border-yellow-100' },
+                { name: 'Noon.ae Affiliate Programme', icon: '🟡', desc: 'We intend to participate in Noon\'s affiliate programme on the same basis. Where the relationship is active, purchases made through our Noon links may earn us a referral fee under their standard terms.', color: 'bg-yellow-50 border-yellow-100' },
+                { name: 'Advertising', icon: '📊', desc: 'This site does not currently display third-party advertising. If we introduce contextual advertising in future, it will be clearly distinguishable from editorial content, and this page will be updated before it goes live.', color: 'bg-blue-50 border-blue-100' },
+                { name: 'Sponsored Content', icon: '🤝', desc: 'We have no sponsored content and no paid brand partnerships. Should that change, any sponsored item would be labelled as such at the top of the relevant page, and no payment would alter a ranking or verdict.', color: 'bg-green-50 border-green-100' },
               ].map((item, i) => (
                 <div key={i} className={`${item.color} border rounded-2xl p-6`}>
                   <div className="flex items-start gap-4">
@@ -1262,7 +1009,7 @@ const AffiliateDisclosurePage = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[
                 { icon: ShieldCheck, title: 'Never Pay-to-Play', desc: 'No brand can pay to receive a positive review or higher ranking on CoolLivingUAE.' },
-                { icon: Star, title: 'Honest Ratings', desc: 'All star ratings reflect genuine performance data and real-world UAE testing outcomes.' },
+                { icon: Star, title: 'Honest Ratings', desc: 'Scores are our own editorial assessment, based on published specifications and certifications — not user review averages, and not paid placements.' },
                 { icon: CheckCircle, title: 'Transparent Labels', desc: 'All sponsored content, paid partnerships, and gifted products are clearly disclosed.' },
               ].map(({ icon: Icon, title, desc }, i) => (
                 <div key={i} className="bg-gray-50 rounded-2xl p-5 border border-gray-100 text-center">
@@ -1404,40 +1151,6 @@ const SecurityPage = () => {
 };
 
 // --- AC ROOM SIZE CALCULATOR PAGE ---
-const uaeACDatabase = [
-  // 1 TON (9,000–12,000 BTU) — up to ~14 sqm
-  { id: 'calc-ac-1', brand: 'Midea', model: 'Midea 1 Ton T3 Inverter Split AC', tons: 1, btu: 12000, priceAED: 1049, amazon: 'https://www.amazon.ae/s?k=midea+1+ton+inverter+split+ac+uae&rh=n%3A11557803031', noon: 'https://www.noon.com/uae-en/search/?q=midea+1+ton+split+ac', img: 'https://m.media-amazon.com/images/I/61joTSyLZbL._SL1000_.jpg' },
-  { id: 'calc-ac-2', brand: 'Super General', model: 'Super General 1 Ton Split AC T3', tons: 1, btu: 12000, priceAED: 899, amazon: 'https://www.amazon.ae/s?k=super+general+1+ton+split+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=super+general+1+ton+split+ac', img: 'https://5.imimg.com/data5/SELLER/Default/2023/9/340487228/GP/ME/SU/43847510/3-star-1-5-ton-toshiba-non-inverter-split-ac-500x500.jpg' },
-  { id: 'calc-ac-3', brand: 'Gree', model: 'Gree 1 Ton Inverter AC UAE T3', tons: 1, btu: 12000, priceAED: 979, amazon: 'https://www.amazon.ae/s?k=gree+1+ton+inverter+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=gree+1+ton+inverter+ac', img: 'https://i.pinimg.com/736x/3e/b6/d4/3eb6d4b2b8e3968dd8b1c05c9376ae43.jpg' },
-
-  // 1.5 TON (15,000–18,000 BTU) — 14–22 sqm
-  { id: 'calc-ac-4', brand: 'Midea', model: 'Midea 1.5 Ton T3 Inverter Split AC', tons: 1.5, btu: 18000, priceAED: 1299, amazon: 'https://www.amazon.ae/s?k=midea+1.5+ton+inverter+split+ac+uae+t3', noon: 'https://www.noon.com/uae-en/search/?q=midea+1.5+ton+split+ac', img: 'https://superelectrocity.pk/wp-content/uploads/2024/05/Midea-2.0-Ton-Air-Conditioner-MSAGB-24HRFN-DC-Inverter.jpg' },
-  { id: 'calc-ac-5', brand: 'Super General', model: 'Super General 1.5 Ton T3 Split AC', tons: 1.5, btu: 18000, priceAED: 1149, amazon: 'https://www.amazon.ae/s?k=super+general+1.5+ton+split+ac+uae+t3', noon: 'https://www.noon.com/uae-en/search/?q=super+general+1.5+ton+split+ac', img: 'https://www.lg.com/ae/images/AC/features/I27TCP_07_Quick-and-Easy-Installation_07022019_D.jpg' },
-  { id: 'calc-ac-6', brand: 'TCL', model: 'TCL 1.5 Ton Inverter Split AC T3', tons: 1.5, btu: 18000, priceAED: 1199, amazon: 'https://www.amazon.ae/s?k=tcl+1.5+ton+inverter+split+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=tcl+1.5+ton+split+ac', img: 'https://aws-obg-image-lb-3.tcl.com/content/dam/brandsite/global/product/ac/elite/xa73/ksp/1920-1080-TCL-Elite-Series-Inverter-Air-Conditioner.png' },
-  { id: 'calc-ac-7', brand: 'Hisense', model: 'Hisense 1.5 Ton T3 Inverter AC', tons: 1.5, btu: 18000, priceAED: 1249, amazon: 'https://www.amazon.ae/s?k=hisense+1.5+ton+inverter+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=hisense+1.5+ton+split+ac', img: 'https://images.priceoye.pk/hisense-1-5-ton-inverter-ac-hbd1860hc-pakistan-priceoye-zz2kw.jpg' },
-  { id: 'calc-ac-8', brand: 'Samsung', model: 'Samsung WindFree 1.5 Ton T3 Inverter', tons: 1.5, btu: 18000, priceAED: 1799, amazon: 'https://www.amazon.ae/s?k=samsung+windfree+1.5+ton+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=samsung+1.5+ton+split+ac', img: 'https://m.media-amazon.com/images/I/715rBETRD9L._SL1500_.jpg' },
-
-  // 2 TON (21,000–24,000 BTU) — 22–32 sqm
-  { id: 'calc-ac-9', brand: 'Midea', model: 'Midea 2 Ton T3 Inverter Split AC', tons: 2, btu: 24000, priceAED: 1699, amazon: 'https://www.amazon.ae/s?k=midea+2+ton+inverter+split+ac+uae+t3', noon: 'https://www.noon.com/uae-en/search/?q=midea+2+ton+split+ac', img: 'https://superelectrocity.pk/wp-content/uploads/2024/05/Midea-2.0-Ton-Air-Conditioner-MSAGB-24HRFN-DC-Inverter.jpg' },
-  { id: 'calc-ac-10', brand: 'Gree', model: 'Gree 2 Ton T3 Inverter AC', tons: 2, btu: 24000, priceAED: 1599, amazon: 'https://www.amazon.ae/s?k=gree+2+ton+inverter+ac+uae+t3', noon: 'https://www.noon.com/uae-en/search/?q=gree+2+ton+split+ac', img: 'https://i.pinimg.com/736x/3e/b6/d4/3eb6d4b2b8e3968dd8b1c05c9376ae43.jpg' },
-  { id: 'calc-ac-11', brand: 'LG', model: 'LG DualCool 2 Ton T3 Inverter', tons: 2, btu: 24000, priceAED: 2199, amazon: 'https://www.amazon.ae/s?k=lg+dualcool+2+ton+inverter+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=lg+2+ton+split+ac', img: 'https://www.lg.com/ae/images/AC/features/I27TCP_07_Quick-and-Easy-Installation_07022019_D.jpg' },
-  { id: 'calc-ac-12', brand: 'Samsung', model: 'Samsung 2 Ton T3 WindFree Inverter', tons: 2, btu: 24000, priceAED: 2099, amazon: 'https://www.amazon.ae/s?k=samsung+2+ton+windfree+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=samsung+2+ton+split+ac', img: 'https://m.media-amazon.com/images/I/715rBETRD9L._SL1500_.jpg' },
-  { id: 'calc-ac-13', brand: 'O-General', model: 'O-General 2 Ton T3 Split AC', tons: 2, btu: 24000, priceAED: 2499, amazon: 'https://www.amazon.ae/s?k=o-general+2+ton+split+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=o-general+2+ton+split+ac', img: 'https://www.dubaitechnical.com/wp-content/uploads/2020/03/O-General-Air-Conditioners-1.jpg' },
-
-  // 2.5 TON (27,000–30,000 BTU) — 32–40 sqm
-  { id: 'calc-ac-14', brand: 'Midea', model: 'Midea 2.5 Ton T3 Inverter Split AC', tons: 2.5, btu: 30000, priceAED: 2199, amazon: 'https://www.amazon.ae/s?k=midea+2.5+ton+inverter+split+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=midea+2.5+ton+split+ac', img: 'https://superelectrocity.pk/wp-content/uploads/2024/05/Midea-2.0-Ton-Air-Conditioner-MSAGB-24HRFN-DC-Inverter.jpg' },
-  { id: 'calc-ac-15', brand: 'Panasonic', model: 'Panasonic 2.5 Ton T3 Inverter AC', tons: 2.5, btu: 30000, priceAED: 2799, amazon: 'https://www.amazon.ae/s?k=panasonic+2.5+ton+inverter+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=panasonic+2.5+ton+split+ac', img: 'https://www.basildonacr.co.uk/wp-content/uploads/2022/10/Panasonic-Etherea-W.jpg' },
-  { id: 'calc-ac-16', brand: 'Daikin', model: 'Daikin 2.5 Ton T3 Inverter Split AC', tons: 2.5, btu: 30000, priceAED: 2999, amazon: 'https://www.amazon.ae/s?k=daikin+2.5+ton+inverter+split+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=daikin+2.5+ton+split+ac', img: 'https://m.media-amazon.com/images/I/61HuUBy7XIL._AC_.jpg' },
-
-  // 3 TON (33,000–36,000 BTU) — 40–55 sqm
-  { id: 'calc-ac-17', brand: 'O-General', model: 'O-General 3 Ton T3 Split AC UAE', tons: 3, btu: 36000, priceAED: 3499, amazon: 'https://www.amazon.ae/s?k=o-general+3+ton+split+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=o-general+3+ton+split+ac', img: 'https://coolersonline.ae/wp-content/uploads/2022/10/oge9.png' },
-  { id: 'calc-ac-18', brand: 'Carrier', model: 'Carrier 3 Ton T3 Inverter Split AC', tons: 3, btu: 36000, priceAED: 3199, amazon: 'https://www.amazon.ae/s?k=carrier+3+ton+inverter+split+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=carrier+3+ton+split+ac', img: 'https://m.media-amazon.com/images/I/512J3gqzLuL._AC_.jpg' },
-  { id: 'calc-ac-19', brand: 'Daikin', model: 'Daikin 3 Ton T3 Inverter Split AC', tons: 3, btu: 36000, priceAED: 3699, amazon: 'https://www.amazon.ae/s?k=daikin+3+ton+inverter+split+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=daikin+3+ton+split+ac', img: 'https://m.media-amazon.com/images/I/61HuUBy7XIL._AC_.jpg' },
-
-  // 4+ TON — 55+ sqm
-  { id: 'calc-ac-20', brand: 'Carrier', model: 'Carrier 4 Ton T3 Central/Cassette AC', tons: 4, btu: 48000, priceAED: 4799, amazon: 'https://www.amazon.ae/s?k=carrier+4+ton+central+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=carrier+4+ton+central+ac', img: 'https://m.media-amazon.com/images/I/512J3gqzLuL._AC_.jpg' },
-  { id: 'calc-ac-21', brand: 'O-General', model: 'O-General 4 Ton T3 Cassette AC', tons: 4, btu: 48000, priceAED: 5299, amazon: 'https://www.amazon.ae/s?k=o-general+4+ton+cassette+ac+uae', noon: 'https://www.noon.com/uae-en/search/?q=o-general+4+ton+cassette+ac', img: 'https://coolersonline.ae/wp-content/uploads/2022/10/oge9.png' },
-];
 
 const ACCalculatorPage = ({ navigate }) => {
   useEffect(() => updateSEO('AC Size Calculator for UAE | Find the Right BTU for Your Room', 'Calculate the exact AC capacity you need for any room in Dubai or UAE and get the best-priced recommendations.'), []);
@@ -1482,14 +1195,16 @@ const ACCalculatorPage = ({ navigate }) => {
   const btu = calcBTU();
   const recTons = getRecommendedTons(btu);
 
+  // Ordered by the midpoint of each indicative price band. Exact prices are no
+  // longer stored, so the midpoint is what gives a stable, meaningful order.
   const matchedACs = btu
     ? uaeACDatabase
         .filter(ac => ac.tons === recTons || (btu > 36000 && ac.tons === 4))
-        .sort((a, b) => a.priceAED - b.priceAED)
+        .sort((a, b) => priceBandMidpoint(a.priceBand) - priceBandMidpoint(b.priceBand))
     : [];
 
-  const cheapestAmazon = matchedACs.find(ac => ac.amazon);
-  const cheapestNoon = matchedACs.find(ac => ac.noon);
+  const cheapestAmazon = matchedACs.find(ac => ac.amazonQuery);
+  const cheapestNoon = matchedACs.find(ac => ac.noonQuery);
 
   const hasValidDims = dims.length && dims.width && dims.height && parseFloat(dims.length) > 0 && parseFloat(dims.width) > 0 && parseFloat(dims.height) > 0;
   const area = hasValidDims ? (parseFloat(dims.length) * parseFloat(dims.width)).toFixed(1) : null;
@@ -1608,43 +1323,45 @@ const ACCalculatorPage = ({ navigate }) => {
               {matchedACs.length > 0 && (
                 <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
                   <div className="flex items-center justify-between mb-6">
-                    <h3 className="font-black text-slate-900 text-lg">Best Priced Matches in UAE</h3>
+                    <h3 className="font-black text-slate-900 text-lg">Matching {recTons} Ton Units</h3>
                     <span className="bg-green-100 text-green-700 text-xs font-black px-3 py-1 rounded-full">{recTons} Ton T3</span>
                   </div>
 
-                  {/* Top picks side by side */}
+                  <AffiliateDisclosure className="mb-6" />
+
+                  {/* Most affordable option on each retailer */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                     {cheapestAmazon && (
                       <div className="border-2 border-orange-200 rounded-2xl p-5 bg-orange-50 relative overflow-hidden">
-                        <div className="absolute top-3 right-3 bg-orange-500 text-white text-[9px] font-black px-2 py-1 rounded-full uppercase tracking-widest">Lowest on Amazon</div>
+                        <div className="absolute top-3 right-3 bg-orange-500 text-white text-[9px] font-black px-2 py-1 rounded-full uppercase tracking-widest">Lowest band</div>
                         <img src={cheapestAmazon.img} alt={cheapestAmazon.model} className="w-full h-32 object-cover rounded-xl mb-4 border border-orange-100" onError={e => { e.target.style.display='none'; }} />
                         <div className="text-[10px] text-orange-600 font-bold uppercase tracking-widest mb-1">{cheapestAmazon.brand}</div>
                         <div className="font-bold text-slate-900 text-sm mb-1 line-clamp-2">{cheapestAmazon.model}</div>
-                        <div className="text-2xl font-black text-slate-900 mb-4">AED {cheapestAmazon.priceAED.toLocaleString()}<span className="text-xs font-medium text-slate-400 ml-1">starting from</span></div>
-                        <a href={cheapestAmazon.amazon} target="_blank" rel="noopener noreferrer"
+                        <div className="text-xl font-black text-slate-900 mb-4">{formatPriceBand(cheapestAmazon.priceBand)}<span className="block text-[10px] font-medium text-slate-400">indicative range</span></div>
+                        <AffiliateLink merchant="amazon" query={cheapestAmazon.amazonQuery} trackingLabel={cheapestAmazon.model}
                           className="block w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition-colors text-sm text-center flex items-center justify-center gap-2">
-                          <ExternalLink size={14} /> View on Amazon.ae
-                        </a>
+                          <ExternalLink size={14} /> Check on Amazon.ae
+                        </AffiliateLink>
                       </div>
                     )}
                     {cheapestNoon && (
                       <div className="border-2 border-yellow-200 rounded-2xl p-5 bg-yellow-50 relative overflow-hidden">
-                        <div className="absolute top-3 right-3 bg-yellow-500 text-white text-[9px] font-black px-2 py-1 rounded-full uppercase tracking-widest">Lowest on Noon</div>
+                        <div className="absolute top-3 right-3 bg-yellow-500 text-white text-[9px] font-black px-2 py-1 rounded-full uppercase tracking-widest">Lowest band</div>
                         <img src={cheapestNoon.img} alt={cheapestNoon.model} className="w-full h-32 object-cover rounded-xl mb-4 border border-yellow-100" onError={e => { e.target.style.display='none'; }} />
                         <div className="text-[10px] text-yellow-700 font-bold uppercase tracking-widest mb-1">{cheapestNoon.brand}</div>
                         <div className="font-bold text-slate-900 text-sm mb-1 line-clamp-2">{cheapestNoon.model}</div>
-                        <div className="text-2xl font-black text-slate-900 mb-4">AED {cheapestNoon.priceAED.toLocaleString()}<span className="text-xs font-medium text-slate-400 ml-1">starting from</span></div>
-                        <a href={cheapestNoon.noon} target="_blank" rel="noopener noreferrer"
+                        <div className="text-xl font-black text-slate-900 mb-4">{formatPriceBand(cheapestNoon.priceBand)}<span className="block text-[10px] font-medium text-slate-400">indicative range</span></div>
+                        <AffiliateLink merchant="noon" query={cheapestNoon.noonQuery} trackingLabel={cheapestNoon.model}
                           className="block w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-xl transition-colors text-sm text-center flex items-center justify-center gap-2">
-                          <ExternalLink size={14} /> View on Noon.ae
-                        </a>
+                          <ExternalLink size={14} /> Check on Noon.ae
+                        </AffiliateLink>
                       </div>
                     )}
                   </div>
 
                   {/* All matched ACs list */}
                   <div className="space-y-3">
-                    <div className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">All {recTons} Ton Options — Sorted by Price</div>
+                    <div className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">All {recTons} Ton Options — Lowest Band First</div>
                     {matchedACs.map((ac, i) => (
                       <div key={ac.id} className="flex items-center gap-4 bg-gray-50 rounded-2xl p-4 border border-gray-100 hover:border-blue-200 transition-all">
                         <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-black text-xs flex-shrink-0">#{i+1}</div>
@@ -1652,11 +1369,11 @@ const ACCalculatorPage = ({ navigate }) => {
                         <div className="flex-grow min-w-0">
                           <div className="text-[10px] text-blue-500 font-bold uppercase tracking-widest">{ac.brand}</div>
                           <div className="font-bold text-slate-900 text-sm truncate">{ac.model}</div>
-                          <div className="font-black text-slate-800">AED {ac.priceAED.toLocaleString()}</div>
+                          <div className="font-black text-slate-800 text-sm">{formatPriceBand(ac.priceBand)}</div>
                         </div>
                         <div className="flex gap-2 flex-shrink-0">
-                          <a href={ac.amazon} target="_blank" rel="noopener noreferrer" className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-3 rounded-xl transition-colors text-xs flex items-center gap-1">Amazon <ExternalLink size={10} /></a>
-                          <a href={ac.noon} target="_blank" rel="noopener noreferrer" className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-3 rounded-xl transition-colors text-xs flex items-center gap-1">Noon <ExternalLink size={10} /></a>
+                          <AffiliateLink merchant="amazon" query={ac.amazonQuery} trackingLabel={ac.model} className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-3 rounded-xl transition-colors text-xs flex items-center gap-1">Amazon <ExternalLink size={10} /></AffiliateLink>
+                          <AffiliateLink merchant="noon" query={ac.noonQuery} trackingLabel={ac.model} className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-3 rounded-xl transition-colors text-xs flex items-center gap-1">Noon <ExternalLink size={10} /></AffiliateLink>
                         </div>
                       </div>
                     ))}
@@ -1830,21 +1547,71 @@ const ContactPage = () => {
 };
 
 // --- SECURITY & ADMIN ---
+/**
+ * Administrator sign-in.
+ *
+ * This replaces a shared access key that was compared in client-side code.
+ * That key shipped in the production JavaScript bundle in plain text, so it
+ * was readable by anyone who opened the page — and, because Firestore access
+ * was never tied to it, it protected nothing but the visibility of the
+ * dashboard UI.
+ *
+ * Authentication now runs through Firebase Authentication, and firestore.rules
+ * grants lead and moderation access only to a signed-in user. Create admin
+ * accounts in the Firebase console; there is deliberately no sign-up path.
+ */
 const AdminSecurityGate = ({ onVerify, onCancel }) => {
-  const [key, setKey] = useState('');
-  const [error, setError] = useState(false);
-  const checkKey = (e) => { e.preventDefault(); if (key === 'CLU-ADMIN-2026') onVerify(); else { setError(true); setKey(''); } };
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const handleSignIn = async (e) => {
+    e.preventDefault();
+    setError('');
+    setBusy(true);
+    try {
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+      onVerify();
+    } catch (err) {
+      // Firebase distinguishes "no such user" from "wrong password". Collapsing
+      // both into one message avoids confirming which accounts exist.
+      if (import.meta.env.DEV) console.error('[admin] sign-in failed:', err.code);
+      setError('Sign-in failed. Check the email address and password.');
+      setPassword('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fieldCls = 'w-full border-2 border-slate-200 rounded-xl p-4 outline-none focus:border-blue-600 transition-colors';
+
   return (
     <div className="fixed inset-0 z-[100] bg-slate-900/95 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in duration-300">
         <div className="bg-blue-50 w-16 h-16 rounded-2xl flex items-center justify-center text-blue-600 mx-auto mb-6"><Lock size={32} /></div>
-        <h2 className="text-2xl font-bold text-center mb-8">Secure Access</h2>
-        <form onSubmit={checkKey} className="space-y-4">
-          <input type="password" autoFocus className="w-full border-2 rounded-xl p-4 text-center font-mono outline-none focus:border-blue-600" placeholder="Access Key" value={key} onChange={e => { setKey(e.target.value); setError(false); }} />
-          {error && <p className="text-red-500 text-center font-bold">Access Denied</p>}
+        <h2 className="text-2xl font-bold text-center mb-2">Administrator Sign-In</h2>
+        <p className="text-center text-slate-400 text-xs mb-8">Authorised personnel only.</p>
+        <form onSubmit={handleSignIn} className="space-y-4">
+          <div>
+            <label htmlFor="admin-email" className="block text-xs font-bold uppercase text-slate-400 mb-2">Email</label>
+            <input id="admin-email" type="email" autoComplete="username" required autoFocus
+              className={fieldCls} value={email}
+              onChange={e => { setEmail(e.target.value); setError(''); }} />
+          </div>
+          <div>
+            <label htmlFor="admin-password" className="block text-xs font-bold uppercase text-slate-400 mb-2">Password</label>
+            <input id="admin-password" type="password" autoComplete="current-password" required
+              className={fieldCls} value={password}
+              onChange={e => { setPassword(e.target.value); setError(''); }} />
+          </div>
+          {error && <p className="text-red-500 text-center font-bold text-sm" role="alert">{error}</p>}
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onCancel} className="flex-1 bg-slate-100 py-4 rounded-xl font-bold">Cancel</button>
-            <button type="submit" className="flex-1 bg-blue-600 text-white py-4 rounded-xl font-bold">Verify</button>
+            <button type="submit" disabled={busy}
+              className="flex-1 bg-blue-600 disabled:opacity-60 text-white py-4 rounded-xl font-bold">
+              {busy ? 'Signing in…' : 'Sign In'}
+            </button>
           </div>
         </form>
       </div>
@@ -1859,11 +1626,20 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
   const [leadsError, setLeadsError] = useState('');
   const [editingProduct, setEditingProduct] = useState(null);
   const [formState, setFormState]   = useState(null);
-  const [addForm, setAddForm]       = useState({ id:'', title:'', brand:'', category:'smart-acs', price:'', rating:'4.5', reviewsCount:'', image:'', affiliateLink:'', description:'', tons:'' });
+  const [addForm, setAddForm]       = useState(EMPTY_PRODUCT_FORM);
   const [addSuccess, setAddSuccess] = useState(false);
+  const [addError, setAddError]     = useState('');
   const [search, setSearch]         = useState('');
   const [catFilter, setCatFilter]   = useState('all');
   const [savingLead, setSavingLead] = useState('');
+
+  // ── Review moderation ──────────────────────────────────────────────────
+  // null = not loaded yet; an array = loaded (possibly empty).
+  const [pendingReviews, setPendingReviews]       = useState(null);
+  const [reviewsError, setReviewsError]           = useState('');
+  const [savingReview, setSavingReview]           = useState('');
+  const [reviewsReloadKey, setReviewsReloadKey]   = useState(0);
+  const reviewsLoading = pendingReviews === null;
 
   // ── Fetch leads from Firebase ──────────────────────────────────────────
   useEffect(() => {
@@ -1889,15 +1665,118 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
     setSavingLead('');
   };
 
+  // ── Fetch reviews awaiting moderation ──────────────────────────────────
+  // pendingReviews === null means "not loaded yet", which avoids a separate
+  // loading flag and keeps every state update inside an async continuation
+  // rather than firing synchronously as the effect runs.
+  const loadPendingReviews = () => { setPendingReviews(null); setReviewsReloadKey(k => k + 1); };
+
+  useEffect(() => {
+    if (tab !== 'moderation') return undefined;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const snap = await getDocs(query(
+          collection(db, REVIEWS_COLLECTION),
+          where('approved', '==', false),
+          orderBy('createdAt', 'desc'),
+          fsLimit(50)
+        ));
+        if (cancelled) return;
+        setPendingReviews(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setReviewsError('');
+      } catch {
+        if (cancelled) return;
+        setPendingReviews([]);
+        setReviewsError('Could not load pending reviews — check Firebase rules.');
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [tab, reviewsReloadKey]);
+
+  const approveReview = async (reviewId) => {
+    setSavingReview(reviewId);
+    try {
+      await updateDoc(doc(db, REVIEWS_COLLECTION, reviewId), { approved: true, approvedAt: serverTimestamp() });
+      setPendingReviews(prev => (prev || []).filter(r => r.id !== reviewId));
+    } catch {
+      setReviewsError('Could not approve that review. Please try again.');
+    }
+    setSavingReview('');
+  };
+
+  const rejectReview = async (reviewId) => {
+    if (!window.confirm('Permanently delete this review submission?')) return;
+    setSavingReview(reviewId);
+    try {
+      await deleteDoc(doc(db, REVIEWS_COLLECTION, reviewId));
+      setPendingReviews(prev => (prev || []).filter(r => r.id !== reviewId));
+    } catch {
+      setReviewsError('Could not delete that review. Please try again.');
+    }
+    setSavingReview('');
+  };
+
   // ── Product helpers ────────────────────────────────────────────────────
-  const startEdit   = (p) => { setEditingProduct(p.id); setFormState({ ...p }); setTab('products'); };
-  const handleSave  = () => { setProducts(products.map(p => p.id === editingProduct ? { ...formState, price: Number(formState.price) } : p)); setEditingProduct(null); setFormState(null); };
+  const startEdit   = (p) => {
+    setEditingProduct(p.id);
+    // Flatten the price band so it maps onto two numeric form inputs.
+    setFormState({ ...p, priceMin: p.priceBand?.min ?? '', priceMax: p.priceBand?.max ?? '' });
+    setTab('products');
+  };
+  const handleSave  = () => {
+    const min = Number(formState.priceMin);
+    const max = Number(formState.priceMax);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min <= 0 || max < min) {
+      window.alert('Enter a valid price band — both values numeric, and the maximum at least the minimum.');
+      return;
+    }
+    // priceMin/priceMax are form-only fields; strip them from the stored record.
+    const rest = { ...formState };
+    delete rest.priceMin;
+    delete rest.priceMax;
+    setProducts(products.map(p => p.id === editingProduct
+      ? { ...rest, priceBand: { min, max }, editorialScore: Number(formState.editorialScore) || 0 }
+      : p));
+    setEditingProduct(null);
+    setFormState(null);
+  };
   const handleDelete = (id) => { if (window.confirm('Remove this product from the site?')) setProducts(products.filter(p => p.id !== id)); };
   const handleAdd   = () => {
-    if (!addForm.title || !addForm.price) return;
-    const newId = `${addForm.category}-${Date.now()}`;
-    setProducts([...products, { ...addForm, id: newId, price: Number(addForm.price), reviewsCount: Number(addForm.reviewsCount) || 0, rating: addForm.rating }]);
-    setAddForm({ id:'', title:'', brand:'', category:'smart-acs', price:'', rating:'4.5', reviewsCount:'', image:'', affiliateLink:'', description:'', tons:'' });
+    setAddError('');
+    const min = Number(addForm.priceMin);
+    const max = Number(addForm.priceMax);
+
+    if (!addForm.title.trim() || !addForm.brand.trim()) {
+      setAddError('Title and brand are required.');
+      return;
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min <= 0 || max < min) {
+      setAddError('Enter a valid price band — both values numeric, and the maximum at least the minimum.');
+      return;
+    }
+    if (!addForm.amazonQuery.trim()) {
+      setAddError('Amazon search terms are required, otherwise the product cannot be linked.');
+      return;
+    }
+    if (/^https?:/i.test(addForm.amazonQuery.trim())) {
+      setAddError('Enter search TERMS, not a URL. Tagged URLs are built automatically.');
+      return;
+    }
+
+    // priceMin/priceMax are form-only fields; strip them from the stored record.
+    const rest = { ...addForm };
+    delete rest.priceMin;
+    delete rest.priceMax;
+    setProducts([...products, {
+      ...rest,
+      id: `${addForm.category}-${Date.now()}`,
+      priceBand: { min, max },
+      editorialScore: Number(addForm.editorialScore) || 0,
+    }]);
+    setAddForm(EMPTY_PRODUCT_FORM);
     setAddSuccess(true);
     setTimeout(() => setAddSuccess(false), 3000);
   };
@@ -1919,6 +1798,7 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
     { id: 'leads',    label: 'Leads',       icon: Mail,  badge: newLeads.length },
     { id: 'products', label: 'Products',    icon: LayoutList },
     { id: 'add',      label: 'Add Product', icon: Plus },
+    { id: 'moderation', label: 'Reviews',   icon: MessageSquare, badge: pendingReviews?.length || 0 },
   ];
 
   const inputCls = 'w-full bg-slate-50 border border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-50 text-sm transition-all';
@@ -2109,7 +1989,7 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                     {[
                       { icon: MapPin,       label: 'Location',   val: lead.location || lead.city || '—' },
-                      { icon: Phone || Mail,label: 'Contact',    val: lead.phone || lead.email || '—' },
+                      { icon: Mail,          label: 'Contact',    val: lead.phone || lead.email || '—' },
                       { icon: Thermometer,  label: 'AC Type',    val: lead.acType || lead.productTitle || '—' },
                       { icon: Calendar,     label: 'Urgency',    val: lead.urgency || lead.timeline || 'Not specified' },
                     ].map(({ icon: Icon, label, val }) => (
@@ -2218,9 +2098,9 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                           {p.category === 'smart-acs' ? 'Smart AC' : p.category === 'air-purifiers' ? 'Purifier' : 'Thermostat'}
                         </span>
                       </td>
-                      <td className="p-5 hidden sm:table-cell font-black text-slate-900 text-sm">AED {Number(p.price).toLocaleString()}</td>
+                      <td className="p-5 hidden sm:table-cell font-black text-slate-900 text-sm">{formatPriceBand(p.priceBand)}</td>
                       <td className="p-5 hidden md:table-cell">
-                        <div className="flex items-center gap-1 text-sm font-bold text-amber-500">★ {p.rating}</div>
+                        <div className="flex items-center gap-1 text-sm font-bold text-amber-500">★ {p.editorialScore}</div>
                       </td>
                       <td className="p-5 text-center">
                         <div className="flex items-center justify-center gap-2">
@@ -2269,16 +2149,16 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                   </select>
                 </div>
                 <div>
-                  <label className={labelCls}>Price (AED)</label>
-                  <input type="number" className={inputCls} value={formState.price} onChange={e => setFormState({...formState, price: e.target.value})} />
+                  <label className={labelCls}>Price Band — Minimum (AED)</label>
+                  <input type="number" min="1" className={inputCls} value={formState.priceMin} onChange={e => setFormState({...formState, priceMin: e.target.value})} />
                 </div>
                 <div>
-                  <label className={labelCls}>Rating (0–5)</label>
-                  <input type="number" min="0" max="5" step="0.1" className={inputCls} value={formState.rating} onChange={e => setFormState({...formState, rating: e.target.value})} />
+                  <label className={labelCls}>Price Band — Maximum (AED)</label>
+                  <input type="number" min="1" className={inputCls} value={formState.priceMax} onChange={e => setFormState({...formState, priceMax: e.target.value})} />
                 </div>
                 <div>
-                  <label className={labelCls}>Review Count</label>
-                  <input type="number" className={inputCls} value={formState.reviewsCount || ''} onChange={e => setFormState({...formState, reviewsCount: e.target.value})} />
+                  <label className={labelCls}>Editorial Score (0–5)</label>
+                  <input type="number" min="0" max="5" step="0.1" className={inputCls} value={formState.editorialScore} onChange={e => setFormState({...formState, editorialScore: e.target.value})} />
                 </div>
                 <div>
                   <label className={labelCls}>Tonnage (ACs only)</label>
@@ -2290,8 +2170,9 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                   {formState.image && <img src={formState.image} alt="preview" className="mt-2 h-24 w-auto rounded-xl border border-slate-100 object-cover" onError={e => e.target.style.display='none'} />}
                 </div>
                 <div className="md:col-span-2">
-                  <label className={labelCls}>Amazon.ae Affiliate Link</label>
-                  <input className={inputCls} value={formState.affiliateLink || ''} onChange={e => setFormState({...formState, affiliateLink: e.target.value})} />
+                  <label className={labelCls}>Amazon.ae Search Terms</label>
+                  <input className={inputCls} placeholder="e.g. LG DualCool 1.5 ton inverter split AC UAE" value={formState.amazonQuery || ''} onChange={e => setFormState({...formState, amazonQuery: e.target.value})} />
+                  <p className="text-[10px] text-slate-400 mt-1">Search terms, not a URL. The tagged link is built automatically — avoid model numbers, which produce empty result pages.</p>
                 </div>
                 <div className="md:col-span-2">
                   <label className={labelCls}>Review Description</label>
@@ -2344,16 +2225,16 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                   </select>
                 </div>
                 <div>
-                  <label className={labelCls}>Price (AED) <span className="text-red-400">*</span></label>
-                  <input type="number" className={inputCls} placeholder="e.g. 1950" value={addForm.price} onChange={e => setAddForm({...addForm, price: e.target.value})} />
+                  <label className={labelCls}>Price Band — Minimum (AED) <span className="text-red-400">*</span></label>
+                  <input type="number" min="1" className={inputCls} placeholder="e.g. 1750" value={addForm.priceMin} onChange={e => setAddForm({...addForm, priceMin: e.target.value})} />
                 </div>
                 <div>
-                  <label className={labelCls}>Rating (0–5)</label>
-                  <input type="number" min="0" max="5" step="0.1" className={inputCls} placeholder="e.g. 4.7" value={addForm.rating} onChange={e => setAddForm({...addForm, rating: e.target.value})} />
+                  <label className={labelCls}>Price Band — Maximum (AED) <span className="text-red-400">*</span></label>
+                  <input type="number" min="1" className={inputCls} placeholder="e.g. 2200" value={addForm.priceMax} onChange={e => setAddForm({...addForm, priceMax: e.target.value})} />
                 </div>
                 <div>
-                  <label className={labelCls}>Review Count</label>
-                  <input type="number" className={inputCls} placeholder="e.g. 247" value={addForm.reviewsCount} onChange={e => setAddForm({...addForm, reviewsCount: e.target.value})} />
+                  <label className={labelCls}>Editorial Score (0–5)</label>
+                  <input type="number" min="0" max="5" step="0.1" className={inputCls} placeholder="e.g. 4.7" value={addForm.editorialScore} onChange={e => setAddForm({...addForm, editorialScore: e.target.value})} />
                 </div>
                 <div>
                   <label className={labelCls}>Tonnage (ACs only)</label>
@@ -2365,24 +2246,93 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                   {addForm.image && <img src={addForm.image} alt="preview" className="mt-2 h-24 w-auto rounded-xl border border-slate-100 object-cover" onError={e => e.target.style.display='none'} />}
                 </div>
                 <div className="md:col-span-2">
-                  <label className={labelCls}>Amazon.ae Affiliate Link</label>
-                  <input className={inputCls} placeholder="https://www.amazon.ae/s?k=..." value={addForm.affiliateLink} onChange={e => setAddForm({...addForm, affiliateLink: e.target.value})} />
+                  <label className={labelCls}>Amazon.ae Search Terms <span className="text-red-400">*</span></label>
+                  <input className={inputCls} placeholder="e.g. LG DualCool 1.5 ton inverter split AC UAE" value={addForm.amazonQuery} onChange={e => setAddForm({...addForm, amazonQuery: e.target.value})} />
+                  <p className="text-[10px] text-slate-400 mt-1">Search terms, not a URL. The tagged link is built automatically — avoid model numbers, which produce empty result pages.</p>
                 </div>
                 <div className="md:col-span-2">
                   <label className={labelCls}>Review Description <span className="text-red-400">*</span></label>
-                  <textarea rows={7} className={`${inputCls} resize-none`} placeholder="Write a detailed expert review. Include real specs, UAE-specific performance data, pros, cons, and verdict..." value={addForm.description} onChange={e => setAddForm({...addForm, description: e.target.value})} />
+                  <textarea rows={7} className={`${inputCls} resize-none`} placeholder="Specifications, certifications, UAE service and warranty terms, and your verdict. Do not claim testing that was not carried out." value={addForm.description} onChange={e => setAddForm({...addForm, description: e.target.value})} />
                   <div className="text-right text-[10px] text-slate-400 mt-1">{addForm.description.length} characters</div>
                 </div>
               </div>
+              {addError && (
+                <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm font-bold" role="alert">{addError}</div>
+              )}
               <div className="flex gap-3 mt-6">
-                <button onClick={handleAdd} disabled={!addForm.title || !addForm.price}
+                <button onClick={handleAdd} disabled={!addForm.title || !addForm.priceMin || !addForm.priceMax}
                   className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm">
                   <Plus size={16} /> Publish Product
                 </button>
-                <button onClick={() => setAddForm({ id:'', title:'', brand:'', category:'smart-acs', price:'', rating:'4.5', reviewsCount:'', image:'', affiliateLink:'', description:'', tons:'' })}
+                <button onClick={() => { setAddForm(EMPTY_PRODUCT_FORM); setAddError(''); }}
                   className="px-8 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-xl transition-all">Clear</button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ── REVIEW MODERATION ─────────────────────────────────────────── */}
+        {tab === 'moderation' && (
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <h2 className="font-black text-slate-900 text-lg">Reviews Awaiting Moderation</h2>
+                <p className="text-slate-500 text-xs mt-1">
+                  Nothing appears on the public site until you approve it. Reject anything that is
+                  promotional, abusive, or cannot be attributed to genuine experience.
+                </p>
+              </div>
+              <button onClick={loadPendingReviews} disabled={reviewsLoading}
+                className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-600 font-bold px-5 py-2.5 rounded-xl text-sm transition-all">
+                {reviewsLoading ? 'Refreshing…' : 'Refresh'}
+              </button>
+            </div>
+
+            {reviewsError && (
+              <div className="m-6 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm font-bold" role="alert">
+                {reviewsError}
+              </div>
+            )}
+
+            {reviewsLoading ? (
+              <div className="p-16 text-center text-slate-400 font-bold">Loading…</div>
+            ) : pendingReviews.length === 0 ? (
+              <div className="p-16 text-center">
+                <CheckCircle size={36} className="text-slate-200 mx-auto mb-3" />
+                <p className="text-slate-500 font-bold">Nothing waiting for review.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {pendingReviews.map(r => (
+                  <div key={r.id} className="p-6">
+                    <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
+                      <div>
+                        <div className="font-bold text-slate-900 text-sm">{r.name}</div>
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1">
+                          <MapPin size={10} /> {[r.area, r.emirate].filter(Boolean).join(', ')}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 text-orange-400">
+                        {[...Array(5)].map((_, i) => (
+                          <Star key={i} size={13} fill={i < r.rating ? 'currentColor' : 'none'} className={i < r.rating ? '' : 'text-slate-200'} />
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-slate-600 text-sm leading-relaxed mb-4 bg-slate-50 rounded-xl p-4 border border-slate-100">{r.text}</p>
+                    <div className="flex gap-2">
+                      <button onClick={() => approveReview(r.id)} disabled={savingReview === r.id}
+                        className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition-all flex items-center gap-2">
+                        <CheckCircle size={14} /> {savingReview === r.id ? 'Saving…' : 'Approve & Publish'}
+                      </button>
+                      <button onClick={() => rejectReview(r.id)} disabled={savingReview === r.id}
+                        className="bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-600 font-bold px-5 py-2.5 rounded-xl text-xs transition-all flex items-center gap-2">
+                        <Trash2 size={14} /> Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -2398,24 +2348,24 @@ const AboutUsSection = () => (
       <div className="space-y-6">
         <div className="inline-block bg-blue-50 text-blue-600 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">CoolLivingUAE Mission</div>
         <h2 className="text-3xl font-black text-slate-900 leading-tight">Expert Home Solutions for the <span className="text-blue-600 underline decoration-teal-400">Emirates Climate</span>.</h2>
-        <p className="text-slate-600 leading-relaxed">CoolLivingUAE was founded with a singular objective: to demystify the complex world of cooling technology in the Gulf. With summer temperatures regularly exceeding 50°C, a standard appliance review isn't enough. We test products specifically against <strong>T3 Climate Standards</strong> (high ambient heat) to ensure our readers invest in hardware that actually performs when they need it most.</p>
-        <p className="text-slate-600 leading-relaxed">Our team of Dubai-based specialists combines HVAC engineering knowledge with consumer technology expertise. We provide data-driven insights into energy consumption (DEWA efficiency), air filtration benchmarks (HEPA standards for desert dust), and smart home integration compatibility.</p>
+        <p className="text-slate-600 leading-relaxed">CoolLivingUAE exists to demystify cooling technology in the Gulf. With summer temperatures regularly exceeding 50°C, a standard appliance review isn't enough — a unit that performs well in a temperate market can lose capacity or trip entirely here. We assess every product against <strong>T3 Climate Standards</strong> (high ambient heat certification) so readers can tell the difference before they buy.</p>
+        <p className="text-slate-600 leading-relaxed">Our reviews are built from manufacturer specifications, independent certifications, published research, and the UAE service and warranty terms each brand actually offers. We explain energy consumption in DEWA terms, filtration in HEPA-standard terms, and smart home compatibility in practical terms — and we are explicit about where each claim comes from.</p>
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
             <ShieldCheck className="text-teal-500 mb-2" size={24} />
-            <h4 className="font-bold text-slate-900 text-sm">ESMA & T3 Verified</h4>
-            <p className="text-[10px] text-slate-500">Tested for UAE regulatory compliance and peak desert heat.</p>
+            <h4 className="font-bold text-slate-900 text-sm">T3 &amp; ESMA Focused</h4>
+            <p className="text-[10px] text-slate-500">We check hot-climate certification and UAE energy labelling on every unit.</p>
           </div>
           <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
             <Activity className="text-blue-500 mb-2" size={24} />
-            <h4 className="font-bold text-slate-900 text-sm">Real-World Data</h4>
-            <p className="text-[10px] text-slate-500">Actual energy savings tracked in Dubai villas and apartments.</p>
+            <h4 className="font-bold text-slate-900 text-sm">Transparent Sourcing</h4>
+            <p className="text-[10px] text-slate-500">We say where a claim comes from, and never claim testing we have not done.</p>
           </div>
         </div>
       </div>
       <div className="aspect-video bg-gradient-to-br from-blue-600 to-teal-500 rounded-3xl flex flex-col items-center justify-center p-8 text-white shadow-2xl overflow-hidden relative">
-        <div className="text-5xl font-black mb-2 tracking-tighter">10,000+</div>
-        <div className="text-sm font-bold opacity-80 uppercase tracking-widest">Residents Helped Monthly</div>
+        <div className="text-5xl font-black mb-2 tracking-tighter">{initialProducts.length}</div>
+        <div className="text-sm font-bold opacity-80 uppercase tracking-widest text-center">Products Reviewed Across 3 Categories</div>
         <div className="absolute -bottom-10 -right-10 opacity-10 rotate-12"><Wind size={250} /></div>
       </div>
     </div>
@@ -2428,6 +2378,11 @@ export default function App() {
   const [showSecurityGate, setShowSecurityGate] = useState(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [products, setProducts] = useState(initialProducts);
+
+  // Firebase owns the session, so the UI follows the auth state rather than a
+  // local flag. This also restores the dashboard across a page reload and
+  // clears it if the token is revoked server-side.
+  useEffect(() => onAuthStateChanged(auth, user => setIsAdminAuthenticated(Boolean(user))), []);
 
   // --- Cookie Consent ---
   const [cookieConsent, setCookieConsent] = useState(() => {
@@ -2449,7 +2404,13 @@ export default function App() {
   };
 
   const navigate = (path, params = {}) => { window.scrollTo(0, 0); setRoute({ path, params }); };
-  const handleLogout = () => { setIsAdminAuthenticated(false); navigate('/'); };
+  const handleLogout = async () => {
+    // Clear the Firebase session, not merely the local flag — otherwise the
+    // token stays valid and Firestore access continues.
+    try { await signOut(auth); } catch (error) { if (import.meta.env.DEV) console.error(error); }
+    setIsAdminAuthenticated(false);
+    navigate('/');
+  };
 
   const renderPage = () => {
     switch (route.path) {
@@ -2457,7 +2418,7 @@ export default function App() {
       case 'category': return <CategoryPage categoryId={route.params.id} categories={initialCategories} products={products} navigate={navigate} />;
       case 'product': return <ProductReviewPage productId={route.params.id} products={products} navigate={navigate} />;
       case 'guides': return <GuidePage />;
-      case 'reviews': return <ReviewsPage navigate={navigate} />;
+      case 'reviews': return <ReviewsPage />;
       case 'contact': return <ContactPage />;
       case 'privacy': return <PrivacyPolicyPage />;
       case 'cookies': return <CookiesPolicyPage />;
@@ -2473,7 +2434,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-      {showSecurityGate && <AdminSecurityGate onVerify={() => { setIsAdminAuthenticated(true); setShowSecurityGate(false); navigate('admin'); }} onCancel={() => setShowSecurityGate(false)} />}
+      {showSecurityGate && <AdminSecurityGate onVerify={() => { setShowSecurityGate(false); navigate('admin'); }} onCancel={() => setShowSecurityGate(false)} />}
       {showCookieBanner && <CookieConsentBanner onAccept={handleCookieAccept} onDecline={handleCookieDecline} navigate={navigate} />}
       <header className="bg-white shadow-sm sticky top-0 z-50 border-b h-20 flex items-center">
         <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center">

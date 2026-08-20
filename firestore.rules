@@ -1,0 +1,95 @@
+rules_version = '2';
+
+// ---------------------------------------------------------------------------
+// CoolLivingUAE — Firestore security rules
+//
+// DEPLOY WITH:  firebase deploy --only firestore:rules
+//
+// These rules are the ONLY access control on this data. The Firebase web
+// config in src/firebase.js ships inside the client bundle and is public by
+// design, so anything these rules permit is permitted to the entire internet.
+// Client-side validation exists to give users good error messages; it stops
+// nobody who is determined.
+//
+// ADMIN MODEL
+//   An administrator is any signed-in Firebase Authentication user. Create
+//   admin accounts manually in the Firebase console — self-service signup is
+//   NOT enabled, so no one can grant themselves admin by registering.
+//   Verify in Firebase console → Authentication → Sign-in method that only
+//   Email/Password is enabled and that no open sign-up path exists.
+// ---------------------------------------------------------------------------
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null;
+    }
+
+    function isString(value, minLen, maxLen) {
+      return value is string
+        && value.size() >= minLen
+        && value.size() <= maxLen;
+    }
+
+    // ── Installation lead requests ────────────────────────────────────────
+    // Submitted by the public installation form. These documents contain
+    // personal data — names and phone numbers — so they are WRITE-ONLY for
+    // the public. Only an authenticated administrator can read them.
+    match /installationRequests/{requestId} {
+      allow read: if isAdmin();
+      allow update, delete: if isAdmin();
+
+      allow create: if
+        // Exactly the expected fields, nothing more. Blocks payload stuffing.
+        request.resource.data.keys().hasOnly([
+          'name', 'phone', 'location', 'propertyType',
+          'acType', 'acCapacity', 'message', 'createdAt'
+        ])
+        && request.resource.data.keys().hasAll(['name', 'phone', 'createdAt'])
+        && isString(request.resource.data.name, 2, 80)
+        && isString(request.resource.data.phone, 6, 25)
+        && isString(request.resource.data.get('location', ''), 0, 80)
+        && isString(request.resource.data.get('propertyType', ''), 0, 40)
+        && isString(request.resource.data.get('acType', ''), 0, 40)
+        && isString(request.resource.data.get('acCapacity', ''), 0, 40)
+        && isString(request.resource.data.get('message', ''), 0, 1000)
+        && request.resource.data.createdAt == request.time;
+    }
+
+    // ── Resident reviews ──────────────────────────────────────────────────
+    // Anyone may submit; only approved reviews are publicly readable. The
+    // approved flag is forced false on creation, so a submitter cannot
+    // publish straight to the site by crafting their own payload.
+    match /residentReviews/{reviewId} {
+      allow read: if isAdmin() || resource.data.approved == true;
+
+      allow create: if
+        request.resource.data.keys().hasOnly([
+          'name', 'emirate', 'area', 'text', 'rating', 'approved', 'createdAt'
+        ])
+        && request.resource.data.approved == false
+        && isString(request.resource.data.name, 2, 60)
+        && isString(request.resource.data.area, 0, 60)
+        && isString(request.resource.data.text, 40, 1200)
+        && request.resource.data.emirate in [
+             'Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman',
+             'Ras Al Khaimah', 'Fujairah', 'Umm Al Quwain'
+           ]
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.createdAt == request.time;
+
+      // Moderation — approving or removing a submission — is admin only.
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Everything else ───────────────────────────────────────────────────
+    // Default deny. A new collection is unreachable until rules are written
+    // for it deliberately, rather than inheriting public access by omission.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

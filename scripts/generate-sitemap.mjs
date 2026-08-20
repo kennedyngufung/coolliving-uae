@@ -13,14 +13,26 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { products } from '../src/data/products.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE_URL  = 'https://coollivinguae.com';
 const NOW       = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
+// Priority per product category. Anything not listed falls back to 0.6.
+const CATEGORY_PRIORITY = {
+  'smart-acs': '0.7',
+  'air-purifiers': '0.6',
+  'smart-thermostats': '0.6',
+};
+
 // ── Define all site URLs ─────────────────────────────────────────────────────
 // priority: 1.0 = most important, 0.1 = least
 // changefreq: always | hourly | daily | weekly | monthly | yearly | never
+//
+// Product URLs are derived from the catalogue itself rather than hardcoded
+// counts. A previous version assumed 15 products per category while 20
+// existed, leaving 15 review pages absent from the sitemap entirely.
 const URLS = [
   // Core pages
   { loc: '/',           changefreq: 'daily',   priority: '1.0' },
@@ -34,25 +46,11 @@ const URLS = [
   { loc: '/category/air-purifiers',     changefreq: 'weekly', priority: '0.8' },
   { loc: '/category/smart-thermostats', changefreq: 'weekly', priority: '0.8' },
 
-  // AC Product reviews (15 products)
-  ...Array.from({ length: 15 }, (_, i) => ({
-    loc: `/product/ac-${i + 1}`,
+  // One entry per product in the catalogue
+  ...products.map((product) => ({
+    loc: `/product/${product.id}`,
     changefreq: 'monthly',
-    priority: '0.7',
-  })),
-
-  // Air purifier reviews (15 products)
-  ...Array.from({ length: 15 }, (_, i) => ({
-    loc: `/product/purifier-${i + 1}`,
-    changefreq: 'monthly',
-    priority: '0.6',
-  })),
-
-  // Smart thermostat reviews (15 products)
-  ...Array.from({ length: 15 }, (_, i) => ({
-    loc: `/product/thermo-${i + 1}`,
-    changefreq: 'monthly',
-    priority: '0.6',
+    priority: CATEGORY_PRIORITY[product.category] || '0.6',
   })),
 
   // Legal & trust pages
@@ -62,6 +60,14 @@ const URLS = [
   { loc: '/affiliate', changefreq: 'yearly',  priority: '0.3' },
   { loc: '/security',  changefreq: 'yearly',  priority: '0.3' },
 ];
+
+// A duplicate URL in a sitemap is a crawl-budget waste and a signal of a
+// data-integrity problem upstream, so fail loudly rather than shipping one.
+const duplicates = URLS.map((u) => u.loc).filter((loc, i, all) => all.indexOf(loc) !== i);
+if (duplicates.length > 0) {
+  console.error(`❌ Duplicate sitemap URLs: ${[...new Set(duplicates)].join(', ')}`);
+  process.exit(1);
+}
 
 // ── Build XML ────────────────────────────────────────────────────────────────
 function buildSitemapXML(urls) {

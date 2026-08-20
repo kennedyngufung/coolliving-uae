@@ -1,39 +1,18 @@
-# CoolLivingUAE — robots.txt
-# https://coollivinguae.com/robots.txt
-# Generated: 2026-05-13
+# CoolLivingUAE robots.txt
+# Generated: 2026-08-20
 
-# ── All crawlers ─────────────────────────────────────────────────────────────
 User-agent: *
 Allow: /
 
-# Block backend / build artefacts from indexing
+# Disallow admin and internal paths
 Disallow: /admin
 Disallow: /src/
 Disallow: /.git/
 Disallow: /node_modules/
 Disallow: /scripts/
-Disallow: /*.mjs$
-Disallow: /*.json$
 
-# ── Google ───────────────────────────────────────────────────────────────────
-User-agent: Googlebot
-Allow: /
-Disallow: /admin
-
-# ── Bing ─────────────────────────────────────────────────────────────────────
-User-agent: Bingbot
-Allow: /
-Crawl-delay: 2
-
-# ── Common SEO tools ─────────────────────────────────────────────────────────
-User-agent: AhrefsBot
-Crawl-delay: 10
-
-User-agent: SemrushBot
-Crawl-delay: 10
-
-User-agent: MJ12bot
-Disallow: /
-
-# ── Sitemap ──────────────────────────────────────────────────────────────────
+# Sitemap location
 Sitemap: https://coollivinguae.com/sitemap.xml
+
+# Crawl-delay for polite bots (Google ignores this, but others respect it)
+Crawl-delay: 1

@@ -221,21 +221,49 @@ immediately: a Node script cannot import product data out of a JSX component fil
 
 ---
 
-## Out of scope
+## Scope changes during implementation
 
-These are real problems but not affiliate work. Recorded here so they are not lost:
+**Pulled into scope — security.** Items 1 and 2 below were originally listed as out of scope,
+but the approved moderation model requires that "only `approved: true` documents are readable
+publicly" be enforced by security rules. Rules that distinguish an administrator from the public
+require real authentication, so the moderation feature could not be built safely without it.
+Both were therefore implemented:
 
-1. **Admin key hardcoded in client JS** — `src/App.jsx:1836`, `key === 'CLU-ADMIN-2026'`.
-   Readable by anyone in the production bundle.
-2. **Unauthenticated Firestore lead reads** — `src/App.jsx:1873` reads all
-   `installationRequests` with no auth. If security rules are open, customer names and phone
-   numbers are publicly readable. **Should be verified urgently**, independently of this work.
-3. Unbounded lead query (no `limit`).
-4. Product images hotlinked from unrelated third-party sites (`superelectrocity.pk`,
-   `priceoye.pk`, `pinimg.com`, `basildonacr.co.uk`).
-5. `console.error` and raw `alert()` in the lead handler (`src/App.jsx:824-825`).
+- Firebase Authentication replaces the client-side access key. `firestore.rules` grants lead
+  access and moderation rights only to a signed-in user.
+- `firestore.rules` was written from scratch with field allow-lists, size caps, and default-deny.
 
-Item 2 is a live data-exposure risk and should not wait for this project.
+**Also fixed in passing:** calculator images that hotlinked unrelated retail sites (several
+showed the wrong brand or capacity), and a pre-existing `ReferenceError` — `icon: Phone || Mail`
+referenced an unimported identifier and crashed the admin leads detail view.
+
+## Still out of scope
+
+1. Unbounded lead query in the leads tab (no `limit`).
+2. `console.error` and raw `alert()` in the installation lead handler.
+3. Product images in `src/data/products.js` still hotlink Amazon's CDN. Lower risk than the
+   calculator images that were replaced, but not under our control.
+
+## BLOCKER discovered during implementation: the app has no URL routing
+
+`src/App.jsx:2406` — `navigate()` only calls `setRoute()`. Nothing reads `window.location`,
+nothing calls `history.pushState`, and there is no `popstate` listener. `react-router-dom` is
+installed but never imported.
+
+Every page therefore lives at `/`. The consequences for this project are direct:
+
+- The sitemap now advertises 73 URLs, **none of which the application can serve.** Visiting
+  `/product/ac-1` either 404s or renders the homepage.
+- Googlebot would find 60 product URLs that all render identical homepage content — a textbook
+  duplicate-content signal.
+- An Amazon reviewer clicking any deep link lands on the wrong page, which reads as a broken site.
+- `scripts/prerender.mjs` targets hash routes (`/#/guides`) that the app does not implement
+  either, so prerendering currently produces copies of the homepage under different filenames.
+
+Fixing this means adopting real routing (the installed `react-router-dom`, or `history` +
+`popstate`), converting every `navigate()` call site, and adding SPA rewrite rules at the host.
+It is a project in its own right and was not part of this design, but **the affiliate application
+should not be submitted until it is done** — the sitemap and prerendering work assume it.
 
 ---
 
