@@ -2376,13 +2376,18 @@ const AboutUsSection = () => (
 export default function App() {
   const [route, setRoute] = useState({ path: '/', params: {} });
   const [showSecurityGate, setShowSecurityGate] = useState(false);
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [products, setProducts] = useState(initialProducts);
 
   // Firebase owns the session, so the UI follows the auth state rather than a
   // local flag. This also restores the dashboard across a page reload and
   // clears it if the token is revoked server-side.
-  useEffect(() => onAuthStateChanged(auth, user => setIsAdminAuthenticated(Boolean(user))), []);
+  //
+  // Three states, not two: 'checking' matters because onAuthStateChanged fires
+  // asynchronously. Collapsing it into "not signed in" renders a blank admin
+  // page in the window between a successful sign-in and the listener firing.
+  const [authState, setAuthState] = useState('checking'); // checking | in | out
+  useEffect(() => onAuthStateChanged(auth, user => setAuthState(user ? 'in' : 'out')), []);
+  const isAdminAuthenticated = authState === 'in';
 
   // --- Cookie Consent ---
   const [cookieConsent, setCookieConsent] = useState(() => {
@@ -2407,8 +2412,9 @@ export default function App() {
   const handleLogout = async () => {
     // Clear the Firebase session, not merely the local flag — otherwise the
     // token stays valid and Firestore access continues.
+    // onAuthStateChanged flips authState to 'out', so there is no local flag
+    // to clear here — and nothing that could disagree with Firebase.
     try { await signOut(auth); } catch (error) { if (import.meta.env.DEV) console.error(error); }
-    setIsAdminAuthenticated(false);
     navigate('/');
   };
 
@@ -2427,7 +2433,23 @@ export default function App() {
       case 'terms': return <TermsOfServicePage />;
       case 'calculator': return <ACCalculatorPage navigate={navigate} />;
       case 'installation': return <InstallationPage productId={route.params.id} products={products} navigate={navigate} />;
-      case 'admin': return isAdminAuthenticated ? <AdminDashboard products={products} setProducts={setProducts} onLogout={handleLogout} /> : null;
+      case 'admin':
+        if (authState === 'checking') {
+          return <div className="p-20 text-center text-slate-400 font-bold">Verifying session…</div>;
+        }
+        if (authState === 'out') {
+          // Signed out — offer the way back in rather than rendering nothing.
+          return (
+            <div className="p-20 text-center">
+              <Lock size={32} className="text-slate-300 mx-auto mb-4" />
+              <p className="text-slate-500 font-bold mb-6">You are not signed in.</p>
+              <button onClick={() => setShowSecurityGate(true)} className="bg-blue-600 text-white font-bold py-3 px-8 rounded-xl hover:bg-blue-700 transition-all">
+                Sign In
+              </button>
+            </div>
+          );
+        }
+        return <AdminDashboard products={products} setProducts={setProducts} onLogout={handleLogout} />;
       default: return <div className="p-20 text-center font-bold">404 - Not Found</div>;
     }
   };

@@ -11,19 +11,40 @@ rules_version = '2';
 // Client-side validation exists to give users good error messages; it stops
 // nobody who is determined.
 //
-// ADMIN MODEL
-//   An administrator is any signed-in Firebase Authentication user. Create
-//   admin accounts manually in the Firebase console — self-service signup is
-//   NOT enabled, so no one can grant themselves admin by registering.
-//   Verify in Firebase console → Authentication → Sign-in method that only
-//   Email/Password is enabled and that no open sign-up path exists.
+// ADMIN MODEL — READ THIS BEFORE CHANGING IT
+//   An administrator is a signed-in user whose UID appears in ADMIN_UIDS below.
+//
+//   It is NOT sufficient to check `request.auth != null`. Enabling the
+//   Email/Password provider makes createUserWithEmailAndPassword() callable by
+//   anyone holding the public Firebase config — which ships in every page of
+//   the site. A "signed in" user is therefore a self-registered stranger until
+//   proven otherwise, and treating that as admin would expose every customer
+//   name and phone number in installationRequests.
+//
+//   SETUP (required — access is denied to everyone until you do this):
+//     1. Firebase console → Authentication → Users → Add user.
+//     2. Copy that account's User UID from the users table.
+//     3. Paste it into ADMIN_UIDS below and redeploy these rules.
+//
+//   ALSO HARDEN THE CONSOLE (defence in depth, not a substitute for the above):
+//     - Authentication → Sign-in method → disable "Email link (passwordless)".
+//     - Authentication → Settings → User actions → untick "Enable create
+//       (sign-up)" so strangers cannot register at all.
 // ---------------------------------------------------------------------------
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Paste your admin User UID(s) here, e.g. ['aB3xY9kLmN0pQrS1tU2vW3xY4zZ5'].
+    // An empty list denies admin access to everyone, which is the correct
+    // default: failing closed is safe, failing open leaks customer data.
+    function adminUids() {
+      return [];
+    }
+
     function isAdmin() {
-      return request.auth != null;
+      return request.auth != null
+        && request.auth.uid in adminUids();
     }
 
     function isString(value, minLen, maxLen) {
