@@ -12,7 +12,7 @@ rules_version = '2';
 // nobody who is determined.
 //
 // ADMIN MODEL — READ THIS BEFORE CHANGING IT
-//   An administrator is a signed-in user whose UID appears in ADMIN_UIDS below.
+//   An administrator is a signed-in user whose UID appears in adminUids() below.
 //
 //   It is NOT sufficient to check `request.auth != null`. Enabling the
 //   Email/Password provider makes createUserWithEmailAndPassword() callable by
@@ -21,10 +21,10 @@ rules_version = '2';
 //   proven otherwise, and treating that as admin would expose every customer
 //   name and phone number in installationRequests.
 //
-//   SETUP (required — access is denied to everyone until you do this):
-//     1. Firebase console → Authentication → Users → Add user.
-//     2. Copy that account's User UID from the users table.
-//     3. Paste it into ADMIN_UIDS below and redeploy these rules.
+//   TO ADD OR REMOVE AN ADMINISTRATOR:
+//     1. Firebase console → Authentication → Users (add or delete the account).
+//     2. Update adminUids() below with that account's User UID.
+//     3. Redeploy:  firebase deploy --only firestore:rules
 //
 //   ALSO HARDEN THE CONSOLE (defence in depth, not a substitute for the above):
 //     - Authentication → Sign-in method → disable "Email link (passwordless)".
@@ -35,11 +35,18 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Paste your admin User UID(s) here, e.g. ['aB3xY9kLmN0pQrS1tU2vW3xY4zZ5'].
+    // Admin User UIDs, taken from Firebase console → Authentication → Users.
     // An empty list denies admin access to everyone, which is the correct
     // default: failing closed is safe, failing open leaks customer data.
+    //
+    // A UID is an identifier, not a credential — knowing it does not let
+    // anyone sign in as that account, so it is safe in version control.
+    // To revoke an administrator, remove their UID here AND delete the
+    // account in the console, then redeploy.
     function adminUids() {
-      return [];
+      return [
+        'jSlEwVQSk8MhF2t0ZiahlY71wzz1'
+      ];
     }
 
     function isAdmin() {
