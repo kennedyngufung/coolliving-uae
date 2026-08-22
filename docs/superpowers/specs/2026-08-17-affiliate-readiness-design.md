@@ -244,69 +244,28 @@ referenced an unimported identifier and crashed the admin leads detail view.
 3. Product images in `src/data/products.js` still hotlink Amazon's CDN. Lower risk than the
    calculator images that were replaced, but not under our control.
 
-## BLOCKER discovered during implementation: the app has no URL routing
+## RESOLVED: the app now has URL routing
 
-`src/App.jsx:2406` — `navigate()` only calls `setRoute()`. Nothing reads `window.location`,
-nothing calls `history.pushState`, and there is no `popstate` listener. `react-router-dom` is
-installed but never imported.
+Discovered during implementation and fixed in a follow-up session. Previously `navigate()` only
+called `setRoute()` — nothing read `window.location`, so every page lived at `/`, the 73 sitemap
+URLs could not be served, and prerendering produced copies of the homepage.
 
-Every page therefore lives at `/`. The consequences for this project are direct:
+Now: `src/routes.js` translates between the internal `{ path, params }` route object and real
+URLs in both directions, `navigate()` calls `history.pushState`, and a `popstate` listener
+handles back/forward. `navigate()`'s signature is unchanged, so no call site needed editing.
 
-- The sitemap now advertises 73 URLs, **none of which the application can serve.** Visiting
-  `/product/ac-1` either 404s or renders the homepage.
-- Googlebot would find 60 product URLs that all render identical homepage content — a textbook
-  duplicate-content signal.
-- An Amazon reviewer clicking any deep link lands on the wrong page, which reads as a broken site.
-- `scripts/prerender.mjs` targets hash routes (`/#/guides`) that the app does not implement
-  either, so prerendering currently produces copies of the homepage under different filenames.
+`crawlablePaths()` in the same module feeds both the sitemap generator and the prerender script,
+so neither can drift from the routes the app actually serves. Firebase Hosting is configured in
+`firebase.json` with a rewrite of all unknown paths to `/index.html`.
 
-Fixing this means adopting real routing (the installed `react-router-dom`, or `history` +
-`popstate`), converting every `navigate()` call site, and adding SPA rewrite rules at the host.
-It is a project in its own right and was not part of this design, but **the affiliate application
-should not be submitted until it is done** — the sitemap and prerendering work assume it.
+Two further SEO defects were found and fixed while verifying this:
 
----
+- **Every page declared the homepage as its canonical URL.** No caller passed `updateSEO`'s
+  `path` argument, so all 73 pages emitted `<link rel="canonical" href="https://coollivinguae.com">`
+  — an instruction to Google that the whole site is duplicates of `/`. Canonical is now derived
+  from `window.location.pathname`.
+- **Titles double-stamped the brand** ("Privacy Policy | CoolLivingUAE | CoolLivingUAE") on six
+  pages whose titles already carried it.
 
-## Staging
-
-**Phase 1 — infrastructure.** `affiliate.js`, `AffiliateLink`, `AffiliateDisclosure`, data
-extraction, price bands, link-quality fixes, sitemap fix. Reviewable independently; verifies the
-plumbing before any copy is touched.
-
-**Phase 2 — content.** 60 description rewrites, rating relabel, `reviewsCount` removal, homepage
-claim, reviews-page conversion with moderation.
-
----
-
-## Verification
-
-**Phase 1**
-
-- `npm run build` completes clean.
-- `npm run lint` reports no new errors.
-- `grep -rn "window.open" src/` returns no commercial links.
-- `grep -c "amazon.ae" src/data/products.js` returns 0 — all URLs constructed, none stored.
-- With `VITE_AMAZON_AE_TAG` set in `.env`, the resolved `href` on a product card, a review page,
-  and a calculator row each contain `tag=`.
-- With the tag **unset**, links still resolve and the page does not error.
-- Inspected anchors carry `rel="sponsored nofollow noopener noreferrer"` and `target="_blank"`.
-- `node scripts/generate-sitemap.mjs` emits 60 product URLs (was 45).
-- Calculator recommendations remain correctly ordered after the band-midpoint sort change —
-  compare output against current behaviour for at least three room sizes.
-
-**Phase 2**
-
-- `grep -rniE "our (test|study|survey)|we (tested|surveyed|measured|tracked)" src/data/products.js`
-  returns no unsubstantiated first-person claims.
-- No fabricated testimonial text remains anywhere in `src/`.
-- Review submission writes `approved: false`; an unapproved document is **not** readable by an
-  unauthenticated client (test against deployed Firestore rules, not just the UI).
-- Admin moderation tab lists, approves, and rejects submissions.
-- Oversized and unexpected-field submissions are rejected by Firestore rules.
-
-**Pre-application checklist**
-
-- Site deployed and publicly reachable at `coollivinguae.com`.
-- Disclosure visible in proximity to links on product, category, and calculator pages.
-- Disclosure page accurately describes only real, active relationships.
-- No zero-result Amazon search links — spot-check all 60.
+The 404 and admin routes now emit `noindex`. A SPA cannot return a real HTTP 404 — the server has
+already sent 200 with `index.html` — so the meta directive is the only thing preventing soft-404s.

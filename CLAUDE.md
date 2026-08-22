@@ -21,8 +21,12 @@ npm run build            # Production build to dist/
 npm run lint             # ESLint
 npm run generate-sitemap # Regenerate public/sitemap.xml + robots.txt from the catalogue
 npm run build:prod       # build + generate-sitemap
-npm run prerender        # Puppeteer static prerender (see "Known broken" below)
+npm run prerender        # Puppeteer static prerender of all 73 crawlable URLs
 ```
+
+`prerender` needs the built site served on :4173 first (`npx vite preview --port 4173`).
+It waits on `domcontentloaded`, not `networkidle0` — pages that read Firestore hold an open
+connection, so the network never goes idle and `networkidle0` times out.
 
 **There is no test framework in this project.** No Jest, no Vitest, no test script. Verification
 is done through `npm run build`, `npm run lint`, and targeted Node scripts.
@@ -38,19 +42,31 @@ make sure the number has not grown. Most are unused-variable and empty-block war
 
 ### Routing — read this first
 
-**The app has no URL routing.** `navigate()` in `src/App.jsx` only calls `setRoute()`. Nothing
-reads `window.location`, there is no `history.pushState`, and no `popstate` listener.
-`react-router-dom` is installed but never imported.
+The app does **not** use a router library. `react-router-dom` is a dependency but is never
+imported; removing it would be safe. Routing is hand-rolled around a `{ path, params }` state
+object, with `src/routes.js` as the single translation layer between that object and real URLs.
 
-Consequences that trip people up:
+- `pathToRoute(pathname)` — URL → `{ path, params }`. Unknown URLs return `{ path: 'not-found' }`.
+- `routeToPath(path, params)` — `{ path, params }` → URL.
+- `crawlablePaths(products)` — every indexable URL. **Both the sitemap generator and the
+  prerender script import this**, so neither can drift from what the app actually serves.
 
-- Every page lives at `/`. Deep links like `/product/ac-1` do not work.
-- `public/sitemap.xml` advertises 73 URLs the app cannot serve.
-- `scripts/prerender.mjs` targets hash routes (`/#/guides`) the app does not implement either,
-  so prerendering currently produces copies of the homepage under different filenames.
+`navigate(path, params)` keeps its original signature — it now also calls `history.pushState`.
+A `popstate` listener in `App.jsx` handles back/forward. When adding a route, add it to
+`STATIC_ROUTES` or `ID_ROUTES` in `src/routes.js` and to the switch in `renderPage()`.
 
-Fixing this means adopting real routing, converting every `navigate()` call site, and adding SPA
-rewrite rules at the host. **The affiliate application should not be submitted until it is done.**
+**Any host must rewrite unknown paths to `/index.html`**, or loading `/product/ac-1` directly
+returns a server 404 before React runs. The rewrite is configured in `firebase.json`; replicate
+it if you move hosts.
+
+SEO details that are easy to break:
+
+- `updateSEO()` derives the canonical URL from `window.location.pathname` by default. Do not go
+  back to passing a hardcoded path — every page previously declared the homepage as its
+  canonical, telling Google all 73 URLs were duplicates.
+- It appends the brand to the title only when not already present.
+- The 404 and admin routes pass `noIndex`. A SPA cannot return a real HTTP 404, so the noindex
+  directive is the only thing preventing soft-404s in Search Console.
 
 ### The affiliate link layer — the core invariant
 
@@ -140,8 +156,10 @@ As of the last session, **nothing has been deployed**:
 - Commits exist locally and may not be pushed to GitHub (`origin/main`).
 - **`firestore.rules` has never been deployed.** The file is inert until pushed to Firebase.
   Until then the project's live rules are whatever is configured in the console.
-- There is no hosting configuration in the repo (no `vercel.json`, `netlify.toml`, or Firebase
-  Hosting config). Whether `coollivinguae.com` currently serves anything is unconfirmed.
+- Firebase Hosting IS now configured in `firebase.json` (serves `dist/`, rewrites all unknown
+  paths to /index.html, long-cache on hashed assets). Deploy with
+  `firebase deploy --only hosting`. Free on the Spark plan.
+- Whether `coollivinguae.com` currently serves anything, and where its DNS points, is unconfirmed.
 
 Deploying rules requires `firebase login`, which needs an interactive browser sign-in that Claude
 Code cannot complete. That step must be run by the user.

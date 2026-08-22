@@ -22,27 +22,25 @@ import puppeteer from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { crawlablePaths } from '../src/routes.js';
+import { products } from '../src/data/products.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR  = path.join(__dirname, '..', 'dist');
 const BASE_URL  = 'http://localhost:4173';
 
 // ── Routes to prerender ──────────────────────────────────────────────────────
-// Add new routes here whenever a new page is added to App.jsx.
-// Hash-based params (#product?id=ac-1) are not crawlable — these are the
-// top-level SPA routes that Google needs to index.
-const ROUTES = [
-  { route: '/',            file: 'index.html' },
-  { route: '/#/guides',   file: 'guides/index.html' },
-  { route: '/#/reviews',  file: 'reviews/index.html' },
-  { route: '/#/contact',  file: 'contact/index.html' },
-  { route: '/#/privacy',  file: 'privacy/index.html' },
-  { route: '/#/cookies',  file: 'cookies/index.html' },
-  { route: '/#/terms',    file: 'terms/index.html' },
-  { route: '/#/affiliate',file: 'affiliate/index.html' },
-  { route: '/#/security', file: 'security/index.html' },
-  { route: '/#/calculator',file: 'calculator/index.html' },
-];
+// Derived from src/routes.js, the same table the application routes with, so
+// this list cannot drift from the pages that actually exist.
+//
+// Previously these were hash routes (/#/guides) which the app never
+// implemented — every prerendered file was therefore a copy of the homepage
+// under a different name, which is a duplicate-content signal rather than an
+// SEO benefit.
+const ROUTES = crawlablePaths(products).map((route) => ({
+  route,
+  file: route === '/' ? 'index.html' : `${route.replace(/^\//, '')}/index.html`,
+}));
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function ensureDir(filePath) {
@@ -51,8 +49,9 @@ function ensureDir(filePath) {
 }
 
 function injectPrerenderedMeta(html, route) {
-  // Ensure the page has a canonical link pointing to the real URL
-  const canonical = `https://coollivinguae.com${route === '/' ? '' : route.replace('/#', '')}`;
+  // Ensure the page has a canonical link pointing to the real URL.
+  // Routes are real paths now, so no hash stripping is needed.
+  const canonical = `https://coollivinguae.com${route === '/' ? '' : route}`;
   const canonicalTag = `<link rel="canonical" href="${canonical}" />`;
   if (!html.includes('rel="canonical"')) {
     html = html.replace('</head>', `  ${canonicalTag}\n  </head>`);
@@ -89,11 +88,15 @@ async function prerender() {
         else req.continue();
       });
 
-      await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
+      // 'domcontentloaded' rather than 'networkidle0': pages that read Firestore
+      // (the reviews page, and the homepage's approved-reviews rail) hold an
+      // open connection, so the network never goes fully idle and the wait
+      // times out. Render completion is detected below instead.
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
       // Wait for React to finish rendering
       await page.waitForSelector('#root > *', { timeout: 10000 }).catch(() => {});
-      await new Promise(r => setTimeout(r, 800)); // extra settle time
+      await new Promise(r => setTimeout(r, 1200)); // extra settle time
 
       let html = await page.content();
       html = injectPrerenderedMeta(html, route);

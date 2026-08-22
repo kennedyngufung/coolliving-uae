@@ -15,6 +15,7 @@ import { uaeACDatabase } from './data/calculatorAcs';
 import AffiliateLink from './components/AffiliateLink';
 import AffiliateDisclosure from './components/AffiliateDisclosure';
 import { submitReview, fetchApprovedReviews, EMIRATES, LIMITS, REVIEWS_COLLECTION } from './reviews';
+import { pathToRoute, routeToPath } from './routes';
 
 /** Blank state for the admin product forms. Mirrors the data/products.js field contract. */
 const EMPTY_PRODUCT_FORM = {
@@ -56,10 +57,29 @@ const faqData = [
 const initialProducts = catalogueProducts;
 
 // --- SEO ENGINE (Full OG + Twitter + Canonical + JSON-LD) ---
-const updateSEO = (title, description, path = '', imageUrl = '') => {
-  const fullTitle = `${title} | CoolLivingUAE`;
-  const canonical = `https://coollivinguae.com${path ? '/' + path : ''}`;
-  const ogImage = imageUrl || 'https://coollivinguae.com/og-default.jpg';
+const SITE_ORIGIN = 'https://coollivinguae.com';
+
+/**
+ * @param {string} title       Page title. The brand suffix is appended unless
+ *                             the title already carries it.
+ * @param {string} description Meta description.
+ * @param {string} path        Canonical path override. Defaults to the current
+ *                             URL, which is correct for every real page.
+ * @param {string} imageUrl    Open Graph image override.
+ * @param {boolean} noIndex    Set for pages that must stay out of the index.
+ */
+const updateSEO = (title, description, path = '', imageUrl = '', noIndex = false) => {
+  // Several pages already end in "| CoolLivingUAE"; appending unconditionally
+  // produced titles like "Privacy Policy | CoolLivingUAE | CoolLivingUAE".
+  const fullTitle = title.includes('CoolLivingUAE') ? title : `${title} | CoolLivingUAE`;
+
+  // Derive the canonical URL from the address bar. Previously no caller passed
+  // `path`, so every page declared the homepage as its canonical — telling
+  // Google that all 73 URLs were duplicates of "/" and should not be indexed.
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const canonicalPath = path ? (path.startsWith('/') ? path : `/${path}`) : currentPath;
+  const canonical = `${SITE_ORIGIN}${canonicalPath === '/' ? '' : canonicalPath}`;
+  const ogImage = imageUrl || `${SITE_ORIGIN}/og-default.jpg`;
 
   document.title = fullTitle;
 
@@ -75,7 +95,7 @@ const updateSEO = (title, description, path = '', imageUrl = '') => {
 
   // Basic
   setMetaName('description', description);
-  setMetaName('robots', 'index, follow');
+  setMetaName('robots', noIndex ? 'noindex, nofollow' : 'index, follow');
   setLink('canonical', canonical);
 
   // Open Graph
@@ -2374,9 +2394,21 @@ const AboutUsSection = () => (
 
 // --- MAIN APP ---
 export default function App() {
-  const [route, setRoute] = useState({ path: '/', params: {} });
+  // Initial route comes from the URL, so deep links and refreshes land on the
+  // right page instead of always rendering the homepage.
+  const [route, setRoute] = useState(() =>
+    typeof window === 'undefined' ? { path: '/', params: {} } : pathToRoute(window.location.pathname)
+  );
   const [showSecurityGate, setShowSecurityGate] = useState(false);
   const [products, setProducts] = useState(initialProducts);
+
+  // Back and forward buttons. Without this the browser changes the URL but the
+  // app keeps rendering whatever it rendered last.
+  useEffect(() => {
+    const onPopState = () => setRoute(pathToRoute(window.location.pathname));
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   // Firebase owns the session, so the UI follows the auth state rather than a
   // local flag. This also restores the dashboard across a page reload and
@@ -2408,7 +2440,21 @@ export default function App() {
     setCookieConsent('declined'); setShowCookieBanner(false);
   };
 
-  const navigate = (path, params = {}) => { window.scrollTo(0, 0); setRoute({ path, params }); };
+  /**
+   * Navigates and writes a real URL into the browser history.
+   *
+   * The { path, params } signature is unchanged, so every existing call site
+   * keeps working; the difference is that the address bar now reflects the
+   * page and the back button behaves as visitors expect.
+   */
+  const navigate = (path, params = {}) => {
+    const url = routeToPath(path, params);
+    if (url !== window.location.pathname) {
+      window.history.pushState({}, '', url);
+    }
+    window.scrollTo(0, 0);
+    setRoute({ path, params });
+  };
   const handleLogout = async () => {
     // Clear the Firebase session, not merely the local flag — otherwise the
     // token stays valid and Firestore access continues.
@@ -2434,6 +2480,8 @@ export default function App() {
       case 'calculator': return <ACCalculatorPage navigate={navigate} />;
       case 'installation': return <InstallationPage productId={route.params.id} products={products} navigate={navigate} />;
       case 'admin':
+        // Never index the dashboard, whatever state it is in.
+        updateSEO('Administrator', 'Restricted area.', '', '', true);
         if (authState === 'checking') {
           return <div className="p-20 text-center text-slate-400 font-bold">Verifying session…</div>;
         }
@@ -2450,7 +2498,20 @@ export default function App() {
           );
         }
         return <AdminDashboard products={products} setProducts={setProducts} onLogout={handleLogout} />;
-      default: return <div className="p-20 text-center font-bold">404 - Not Found</div>;
+      default:
+        // A SPA cannot return HTTP 404 for an unknown URL — the server already
+        // sent 200 with index.html. Marking it noindex is what stops Google
+        // recording these as thin, indexable "soft 404" pages.
+        updateSEO('Page Not Found', 'This page does not exist.', '', '', true);
+        return (
+          <div className="p-20 text-center">
+            <h1 className="text-3xl font-black text-slate-900 mb-3">404 — Page Not Found</h1>
+            <p className="text-slate-500 mb-8">That page does not exist, or has moved.</p>
+            <button onClick={() => navigate('/')} className="bg-blue-600 text-white font-bold py-3 px-8 rounded-xl hover:bg-blue-700 transition-all">
+              Back to Home
+            </button>
+          </div>
+        );
     }
   };
 

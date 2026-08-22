@@ -14,58 +14,58 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { products } from '../src/data/products.js';
+import { crawlablePaths, pathToRoute } from '../src/routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE_URL  = 'https://coollivinguae.com';
 const NOW       = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-// Priority per product category. Anything not listed falls back to 0.6.
-const CATEGORY_PRIORITY = {
-  'smart-acs': '0.7',
-  'air-purifiers': '0.6',
-  'smart-thermostats': '0.6',
-};
-
-// ── Define all site URLs ─────────────────────────────────────────────────────
+// ── Crawl metadata ───────────────────────────────────────────────────────────
 // priority: 1.0 = most important, 0.1 = least
 // changefreq: always | hourly | daily | weekly | monthly | yearly | never
-//
-// Product URLs are derived from the catalogue itself rather than hardcoded
-// counts. A previous version assumed 15 products per category while 20
-// existed, leaving 15 review pages absent from the sitemap entirely.
-const URLS = [
-  // Core pages
-  { loc: '/',           changefreq: 'daily',   priority: '1.0' },
-  { loc: '/guides',     changefreq: 'weekly',  priority: '0.9' },
-  { loc: '/reviews',    changefreq: 'weekly',  priority: '0.8' },
-  { loc: '/calculator', changefreq: 'monthly', priority: '0.9' },
-  { loc: '/contact',    changefreq: 'monthly', priority: '0.6' },
+const META = {
+  '/':           { changefreq: 'daily',   priority: '1.0' },
+  '/guides':     { changefreq: 'weekly',  priority: '0.9' },
+  '/calculator': { changefreq: 'monthly', priority: '0.9' },
+  '/reviews':    { changefreq: 'weekly',  priority: '0.8' },
+  '/contact':    { changefreq: 'monthly', priority: '0.6' },
+  '/privacy':    { changefreq: 'yearly',  priority: '0.3' },
+  '/cookies':    { changefreq: 'yearly',  priority: '0.3' },
+  '/terms':      { changefreq: 'yearly',  priority: '0.3' },
+  '/affiliate':  { changefreq: 'yearly',  priority: '0.3' },
+  '/security':   { changefreq: 'yearly',  priority: '0.3' },
+};
 
-  // Category pages
-  { loc: '/category/smart-acs',         changefreq: 'weekly', priority: '0.9' },
-  { loc: '/category/air-purifiers',     changefreq: 'weekly', priority: '0.8' },
-  { loc: '/category/smart-thermostats', changefreq: 'weekly', priority: '0.8' },
+const CATEGORY_META = { changefreq: 'weekly',  priority: '0.9' };
+const PRODUCT_META  = { changefreq: 'monthly', priority: '0.7' };
 
-  // One entry per product in the catalogue
-  ...products.map((product) => ({
-    loc: `/product/${product.id}`,
-    changefreq: 'monthly',
-    priority: CATEGORY_PRIORITY[product.category] || '0.6',
-  })),
+function metaFor(loc) {
+  if (META[loc]) return META[loc];
+  if (loc.startsWith('/category/')) return CATEGORY_META;
+  if (loc.startsWith('/product/')) return PRODUCT_META;
+  return { changefreq: 'monthly', priority: '0.5' };
+}
 
-  // Legal & trust pages
-  { loc: '/privacy',   changefreq: 'yearly',  priority: '0.3' },
-  { loc: '/cookies',   changefreq: 'yearly',  priority: '0.3' },
-  { loc: '/terms',     changefreq: 'yearly',  priority: '0.3' },
-  { loc: '/affiliate', changefreq: 'yearly',  priority: '0.3' },
-  { loc: '/security',  changefreq: 'yearly',  priority: '0.3' },
-];
+// URLs come from src/routes.js — the same table the application routes with.
+// This is deliberate: a sitemap is a promise to Google that these URLs exist,
+// and deriving it from anywhere else lets the two drift. A previous version
+// hardcoded 15 products per category while 20 existed, silently omitting 15
+// review pages.
+const URLS = crawlablePaths(products).map((loc) => ({ loc, ...metaFor(loc) }));
 
-// A duplicate URL in a sitemap is a crawl-budget waste and a signal of a
-// data-integrity problem upstream, so fail loudly rather than shipping one.
+// A duplicate URL wastes crawl budget and signals a data-integrity problem.
 const duplicates = URLS.map((u) => u.loc).filter((loc, i, all) => all.indexOf(loc) !== i);
 if (duplicates.length > 0) {
   console.error(`❌ Duplicate sitemap URLs: ${[...new Set(duplicates)].join(', ')}`);
+  process.exit(1);
+}
+
+// Every advertised URL must resolve to a real page. Advertising a URL the app
+// cannot serve is worse than omitting it: Google records a soft 404, and an
+// affiliate programme reviewer following the link sees a broken site.
+const unservable = URLS.filter(({ loc }) => pathToRoute(loc).path === 'not-found');
+if (unservable.length > 0) {
+  console.error(`❌ Sitemap contains URLs the app cannot serve: ${unservable.map(u => u.loc).join(', ')}`);
   process.exit(1);
 }
 
