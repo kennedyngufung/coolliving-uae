@@ -17,7 +17,7 @@ import { products } from '../src/data/products.js';
 import { crawlablePaths, pathToRoute } from '../src/routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const BASE_URL  = 'https://coollivinguae.com';
+const BASE_URL  = (process.env.VITE_SITE_URL || 'https://coollivinguae.com').replace(/\/+$/, '');
 const NOW       = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
 // ── Crawl metadata ───────────────────────────────────────────────────────────
@@ -129,6 +129,6 @@ console.log(`✅ robots.txt written  → ${robotsPath}`);
 
 console.log('\n📋 Next steps:');
 console.log('   1. Commit public/sitemap.xml and public/robots.txt to your repo');
-console.log('   2. After deploying, submit https://coollivinguae.com/sitemap.xml');
+console.log(`   2. After deploying, submit ${BASE_URL}/sitemap.xml`);
 console.log('      to Google Search Console → Sitemaps section');
-console.log('   3. Verify https://coollivinguae.com/robots.txt is accessible\n');
+console.log(`   3. Verify ${BASE_URL}/robots.txt is accessible\n`);

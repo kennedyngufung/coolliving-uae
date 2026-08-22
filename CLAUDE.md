@@ -68,6 +68,17 @@ SEO details that are easy to break:
 - The 404 and admin routes pass `noIndex`. A SPA cannot return a real HTTP 404, so the noindex
   directive is the only thing preventing soft-404s in Search Console.
 
+### Site URL
+
+`VITE_SITE_URL` sets the public origin used for canonical URLs, Open Graph tags, the sitemap,
+and prerendered canonicals. Defaults to `https://coollivinguae.com`. Changing hosts or domains
+is one environment variable, not an edit across App.jsx, generate-sitemap.mjs and prerender.mjs.
+
+`index.html` deliberately carries NO static `<link rel="canonical">`. The same file is served
+for every route, so a hardcoded canonical declared all 73 URLs to be duplicates of the homepage.
+`updateSEO()` inserts the correct per-page canonical; `npm run prerender` bakes it into static
+HTML for crawlers that have not run the JavaScript.
+
 ### The affiliate link layer — the core invariant
 
 `src/affiliate.js` is the single source of truth for every outbound commercial URL.

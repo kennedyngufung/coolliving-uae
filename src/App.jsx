@@ -58,7 +58,10 @@ const faqData = [
 const initialProducts = catalogueProducts;
 
 // --- SEO ENGINE (Full OG + Twitter + Canonical + JSON-LD) ---
-const SITE_ORIGIN = 'https://coollivinguae.com';
+// Site origin, used for canonical URLs and Open Graph tags.
+// Override with VITE_SITE_URL when the site is reachable at another address
+// (a Vercel preview URL, a staging domain). One setting, no code edits.
+const SITE_ORIGIN = (import.meta.env.VITE_SITE_URL || 'https://coollivinguae.com').replace(/\/+$/, '');
 
 /**
  * @param {string} title       Page title. The brand suffix is appended unless

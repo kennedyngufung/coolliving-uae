@@ -10,7 +10,20 @@
     <meta name="robots" content="index, follow" />
     <meta name="author" content="CoolLivingUAE" />
     <meta name="keywords" content="best AC UAE, air conditioner Dubai, split AC Abu Dhabi, air purifier UAE, smart thermostat DEWA, T3 inverter AC UAE" />
-    <link rel="canonical" href="https://coollivinguae.com/" />
+    <!--
+      No static canonical here, deliberately.
+
+      This same index.html is served for every route, so a hardcoded canonical
+      declared the homepage as the canonical version of all 73 URLs — telling
+      Google that every product and category page was a duplicate of "/".
+
+      src/App.jsx (updateSEO) inserts the correct per-page canonical on render.
+      With no static tag present, a crawler that has not yet run the JavaScript
+      treats the requested URL as canonical, which is the right default.
+
+      `npm run prerender` bakes the correct canonical into each page's static
+      HTML — worth running before submitting to Search Console.
+    -->
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />

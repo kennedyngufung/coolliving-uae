@@ -28,6 +28,7 @@ import { products } from '../src/data/products.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIST_DIR  = path.join(__dirname, '..', 'dist');
 const BASE_URL  = 'http://localhost:4173';
+const SITE_URL  = (process.env.VITE_SITE_URL || 'https://coollivinguae.com').replace(/\/+$/, '');
 
 // ── Routes to prerender ──────────────────────────────────────────────────────
 // Derived from src/routes.js, the same table the application routes with, so
@@ -51,7 +52,7 @@ function ensureDir(filePath) {
 function injectPrerenderedMeta(html, route) {
   // Ensure the page has a canonical link pointing to the real URL.
   // Routes are real paths now, so no hash stripping is needed.
-  const canonical = `https://coollivinguae.com${route === '/' ? '' : route}`;
+  const canonical = `${SITE_URL}${route === '/' ? '' : route}`;
   const canonicalTag = `<link rel="canonical" href="${canonical}" />`;
   if (!html.includes('rel="canonical"')) {
     html = html.replace('</head>', `  ${canonicalTag}\n  </head>`);
