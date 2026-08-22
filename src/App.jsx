@@ -1,5 +1,5 @@
 import { db, auth } from "./firebase";
-import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
+import { signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail } from "firebase/auth";
 import { collection, addDoc, getDocs, query, where, orderBy, limit as fsLimit, doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
@@ -1584,7 +1584,45 @@ const AdminSecurityGate = ({ onVerify, onCancel }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+
+  /**
+   * Sends a password reset email.
+   *
+   * Deliberately reports success even when the address has no account. Saying
+   * "no such user" would turn this form into a way to discover which email
+   * addresses have admin access.
+   *
+   * Resetting keeps the account's UID, which matters: the UID is listed in
+   * firestore.rules, so deleting and recreating the account instead would
+   * revoke the new account's access until the rules were redeployed.
+   */
+  const handleReset = async () => {
+    setError('');
+    setNotice('');
+
+    const address = email.trim();
+    if (!address) {
+      setError('Enter your email address first, then choose Forgot password.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await sendPasswordResetEmail(auth, address);
+    } catch (err) {
+      if (import.meta.env.DEV) console.error('[admin] reset failed:', err.code);
+      // Only a malformed address is worth reporting back.
+      if (err?.code === 'auth/invalid-email') {
+        setError('That does not look like a valid email address.');
+        setBusy(false);
+        return;
+      }
+    }
+    setNotice(`If an account exists for ${address}, a reset link is on its way. Check your inbox and spam folder.`);
+    setBusy(false);
+  };
 
   const handleSignIn = async (e) => {
     e.preventDefault();
@@ -1620,12 +1658,23 @@ const AdminSecurityGate = ({ onVerify, onCancel }) => {
               onChange={e => { setEmail(e.target.value); setError(''); }} />
           </div>
           <div>
-            <label htmlFor="admin-password" className="block text-xs font-bold uppercase text-slate-400 mb-2">Password</label>
+            <div className="flex items-baseline justify-between mb-2">
+              <label htmlFor="admin-password" className="block text-xs font-bold uppercase text-slate-400">Password</label>
+              <button type="button" onClick={handleReset} disabled={busy}
+                className="text-[11px] font-bold text-blue-600 hover:underline disabled:opacity-50">
+                Forgot password?
+              </button>
+            </div>
             <input id="admin-password" type="password" autoComplete="current-password" required
               className={fieldCls} value={password}
               onChange={e => { setPassword(e.target.value); setError(''); }} />
           </div>
           {error && <p className="text-red-500 text-center font-bold text-sm" role="alert">{error}</p>}
+          {notice && (
+            <p className="text-green-700 bg-green-50 border border-green-200 rounded-xl p-3 text-center text-xs font-medium" role="status">
+              {notice}
+            </p>
+          )}
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onCancel} className="flex-1 bg-slate-100 py-4 rounded-xl font-bold">Cancel</button>
             <button type="submit" disabled={busy}
