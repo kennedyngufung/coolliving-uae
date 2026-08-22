@@ -118,6 +118,20 @@ No. 15 of 2020 on Consumer Protection all bear on this.
 `src/App.jsx` is ~2,100 lines and holds all page components. It is large; prefer extracting when
 adding substantial new surface rather than growing it further.
 
+### Analytics
+
+GA4 lives in `src/analytics.js`, not in a script tag. Three reasons: GA4 reports one page
+view on load and nothing after, so SPA route changes need `trackPageView()` called explicitly
+(otherwise the homepage looks like the only page anyone visits); the measurement ID comes from
+`VITE_GA4_ID` so the site runs unmeasured rather than shipping a placeholder; and consent is
+wired to the React cookie banner.
+
+Consent Mode v2 defaults to denied. With no `VITE_GA4_ID` set, nothing loads at all — no
+request to Google, no cookies, `window.gtag` undefined. Verified in a headless browser.
+
+`trackEvent('affiliate_click', …)` in `AffiliateLink` is the event that answers the question
+the site exists to answer: which reviews send people to a retailer.
+
 ### Firebase
 
 `src/firebase.js` exports `db` (Firestore) and `auth`. The config object is committed

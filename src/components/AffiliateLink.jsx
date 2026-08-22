@@ -1,5 +1,6 @@
 import React from 'react';
 import { buildAmazonUrl, buildNoonUrl, AFFILIATE_REL } from '../affiliate';
+import { trackEvent } from '../analytics';
 
 /**
  * CoolLivingUAE — Outbound commercial link
@@ -66,16 +67,16 @@ export default function AffiliateLink({
     // Allow the parent to stop a card-level navigation handler from firing.
     if (typeof onNavigate === 'function') onNavigate(event);
 
-    // Analytics only ever fire through gtag, which the app configures with
-    // Consent Mode v2 denied by default. If the visitor has not accepted
-    // cookies, gtag is either absent or holding consent denied, so no
-    // identifier is transmitted. We do not track independently of consent.
-    if (typeof window !== 'undefined' && typeof window.gtag === 'function') {
-      window.gtag('event', 'affiliate_click', {
-        merchant,
-        item_name: trackingLabel || query || asin || 'unknown',
-      });
-    }
+    // Consent Mode v2 is denied by default, so this transmits no identifier
+    // until the visitor accepts the cookie banner, and nothing at all when no
+    // measurement ID is configured. We never track independently of consent.
+    //
+    // This is the event that answers the question the whole site exists to
+    // answer: which reviews actually send people to a retailer.
+    trackEvent('affiliate_click', {
+      merchant,
+      item_name: trackingLabel || query || asin || 'unknown',
+    });
   };
 
   return (

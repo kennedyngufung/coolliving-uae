@@ -16,6 +16,7 @@ import AffiliateLink from './components/AffiliateLink';
 import AffiliateDisclosure from './components/AffiliateDisclosure';
 import { submitReview, fetchApprovedReviews, EMIRATES, LIMITS, REVIEWS_COLLECTION } from './reviews';
 import { pathToRoute, routeToPath } from './routes';
+import { initAnalytics, setAnalyticsConsent, trackPageView } from './analytics';
 
 /** Blank state for the admin product forms. Mirrors the data/products.js field contract. */
 const EMPTY_PRODUCT_FORM = {
@@ -2481,13 +2482,34 @@ export default function App() {
   const handleCookieAccept = () => {
     try { localStorage.setItem('clua_cookie_consent', 'accepted'); } catch {}
     setCookieConsent('accepted'); setShowCookieBanner(false);
-    // Fire analytics only after consent
-    if (window.gtag) { window.gtag('consent', 'update', { analytics_storage: 'granted', ad_storage: 'granted' }); }
+    setAnalyticsConsent(true);
   };
   const handleCookieDecline = () => {
     try { localStorage.setItem('clua_cookie_consent', 'declined'); } catch {}
     setCookieConsent('declined'); setShowCookieBanner(false);
+    setAnalyticsConsent(false);
   };
+
+  // Load GA4 once, honouring any previously stored choice. Reads the stored
+  // value directly rather than the state variable, because this must run
+  // exactly once on mount and must not re-run when consent later changes —
+  // consent updates are pushed through setAnalyticsConsent instead.
+  // No-ops entirely when VITE_GA4_ID is unset: nothing requested, no cookie.
+  useEffect(() => {
+    let stored = null;
+    try { stored = localStorage.getItem('clua_cookie_consent'); } catch { /* storage unavailable */ }
+    initAnalytics(stored);
+  }, []);
+
+  // GA4 only reports a page view when it loads. Without this, every in-app
+  // navigation would go unrecorded and the homepage would look like the only
+  // page anyone ever visits.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      trackPageView(window.location.pathname, document.title);
+    }, 0); // let the page's own updateSEO() set the title first
+    return () => clearTimeout(timer);
+  }, [route]);
 
   /**
    * Navigates and writes a real URL into the browser history.
