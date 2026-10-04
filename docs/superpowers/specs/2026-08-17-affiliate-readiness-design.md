@@ -244,6 +244,14 @@ referenced an unimported identifier and crashed the admin leads detail view.
 3. Product images in `src/data/products.js` still hotlink Amazon's CDN. Lower risk than the
    calculator images that were replaced, but not under our control.
 
+**Update 2026-10-04:** item 2 is resolved — the installation form validates against the
+`firestore.rules` limits, shows inline errors, guards against double submission, and logs only
+in development. Item 3 is narrowed: 26 of the 36 hotlinked image URLs had stopped resolving,
+and a hardcoded fallback had been showing one Samsung AC photo in their place, including on
+purifier and thermostat pages. Products now carry a photo only when it shows their own brand
+and type (10 of 60; three self-hosted under `public/images/products/`), the rest show a neutral
+category tile, and `npm run check-images -- --network` detects dead or shared images.
+
 ## RESOLVED: the app now has URL routing
 
 Discovered during implementation and fixed in a follow-up session. Previously `navigate()` only

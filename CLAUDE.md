@@ -22,6 +22,8 @@ npm run lint             # ESLint
 npm run generate-sitemap # Regenerate public/sitemap.xml + robots.txt from the catalogue
 npm run build:prod       # build + generate-sitemap
 npm run prerender        # Puppeteer static prerender of all 73 crawlable URLs
+npm run check-images     # Product image rules; add `-- --network` to fetch every remote image
+npm run generate-brand-assets  # Rebuild favicon/icons/logo/og-default.jpg in public/ from the header logo
 ```
 
 `prerender` needs the built site served on :4173 first (`npx vite preview --port 4173`).
@@ -33,10 +35,11 @@ is done through `npm run build`, `npm run lint`, and targeted Node scripts.
 
 ### Lint baseline
 
-`npm run lint` reports **12 pre-existing errors** and does not exit clean. This is the accepted
-baseline — do not claim lint "passes". Before finishing work, compare the count against 12 and
+`npm run lint` reports **11 pre-existing errors** and does not exit clean. This is the accepted
+baseline — do not claim lint "passes". Before finishing work, compare the count against 11 and
 make sure the number has not grown. Most are unused-variable and empty-block warnings in
-`src/App.jsx` and `components/BTUCalculator.jsx`.
+`src/App.jsx` and `components/BTUCalculator.jsx`. Destructuring a component as `icon: Icon` in
+function parameters trips `no-unused-vars` here; assign it to a capitalised `const` instead.
 
 ## Architecture
 
@@ -56,8 +59,14 @@ A `popstate` listener in `App.jsx` handles back/forward. When adding a route, ad
 `STATIC_ROUTES` or `ID_ROUTES` in `src/routes.js` and to the switch in `renderPage()`.
 
 **Any host must rewrite unknown paths to `/index.html`**, or loading `/product/ac-1` directly
-returns a server 404 before React runs. The rewrite is configured in `firebase.json`; replicate
-it if you move hosts.
+returns a server 404 before React runs. Production (Vercel) gets it from `vercel.json`;
+`firebase.json` carries the same rewrite. Replicate it if you move hosts.
+
+In-site links render through `src/components/RouteLink.jsx` — a real `<a href>` that still
+navigates client-side on a plain click. Do not go back to `<span onClick>` for navigation:
+crawlers do not follow it, so pages were reachable only through the sitemap, and visitors could
+not open them in new tabs or reach them by keyboard. Buttons that perform an action (installation
+requests, sign-in) stay buttons; per-product installation pages are deliberately not linked.
 
 SEO details that are easy to break:
 
@@ -65,8 +74,9 @@ SEO details that are easy to break:
   back to passing a hardcoded path — every page previously declared the homepage as its
   canonical, telling Google all 73 URLs were duplicates.
 - It appends the brand to the title only when not already present.
-- The 404 and admin routes pass `noIndex`. A SPA cannot return a real HTTP 404, so the noindex
-  directive is the only thing preventing soft-404s in Search Console.
+- The 404, admin, installation, and unknown product/category views pass `noIndex`. A SPA cannot
+  return a real HTTP 404, so the noindex directive is the only thing preventing soft-404s in
+  Search Console. `NotFoundMessage` in `App.jsx` is the shared body for not-found states.
 
 ### Site URL
 
@@ -94,7 +104,13 @@ When adding a product, follow the field contract documented at the top of `src/d
   quickly and produce zero-result pages, which read as a broken site to a programme reviewer.
 - `priceBand` — `{ min, max }` in AED. Never an exact price: Amazon's Operating Agreement permits
   displaying its prices only via the Product Advertising API with a timestamp.
-- `editorialScore` — CoolLivingUAE's own assessment. Never display it as a user-review average.
+- `editorialScore` — CoolLivingUAE's own assessment. Never display it as a user-review average;
+  the card badge reads "Our score", not a bare star and number.
+- `image` — a photo of that product's own brand and type, or `''` (renders a neutral category
+  tile via `src/components/ProductImage.jsx`). Never borrow another brand's or category's photo,
+  and never add a global fallback photo: one hardcoded Samsung AC image previously appeared on
+  every product whose link had died, thermostats and purifiers included. Look at a picture before
+  adding it, prefer files under `public/images/products/`, and run `npm run check-images`.
 
 All outbound commercial links must render through `src/components/AffiliateLink.jsx`, which
 produces a real anchor with `rel="sponsored nofollow noopener noreferrer"`. Never use
@@ -126,8 +142,17 @@ No. 15 of 2020 on Consumer Protection all bear on this.
   script cannot import data out of a JSX component file — this is why the sitemap previously
   hardcoded a count of 15 per category and silently omitted 15 product pages.
 
-`src/App.jsx` is ~2,100 lines and holds all page components. It is large; prefer extracting when
-adding substantial new surface rather than growing it further.
+`src/App.jsx` is ~2,750 lines and holds most page components. It is large; prefer extracting
+into `src/components/` when adding substantial new surface rather than growing it further.
+
+### Brand assets
+
+The favicon set, app icons, `site.webmanifest`, `logo.png` and `og-default.jpg` in `public/` are
+generated by `scripts/generate-brand-assets.mjs` from the header logo's exact markup (Lucide
+"wind" icon, Tailwind blue-600 → teal-500, extra-bold "CoolLiving" + "UAE"). Edit the script and
+re-run it; do not hand-edit the outputs. The wordmark uses the system UI font, as the live
+header does, so raster files take the generating machine's font (committed ones: Windows,
+Segoe UI).
 
 ### Analytics
 
@@ -139,6 +164,12 @@ wired to the React cookie banner.
 
 Consent Mode v2 defaults to denied. With no `VITE_GA4_ID` set, nothing loads at all — no
 request to Google, no cookies, `window.gtag` undefined. Verified in a headless browser.
+
+The cookie banner only appears when a measurement ID is configured — with none, the site sets
+no optional cookies and there is nothing to ask about. Accepting grants `analytics_storage`
+only; the advertising consent signals stay denied because the site runs no ads. The banner,
+Privacy Policy and Cookies Policy must keep describing exactly what the site sets: they
+previously claimed AdSense advertising cookies that never existed.
 
 `trackEvent('affiliate_click', …)` in `AffiliateLink` is the event that answers the question
 the site exists to answer: which reviews send people to a retailer.
@@ -169,22 +200,35 @@ in the window between a successful sign-in and the listener firing.
 Firestore list queries must stay bounded. `fetchApprovedReviews()` caps at 50. The admin leads
 query is still unbounded (known issue).
 
+The installation form validates against the same limits `firestore.rules` enforces (name 2–80
+characters, phone 6–25) via `LEAD_LIMITS` in `App.jsx`. Change both together, or the rules
+reject requests the form accepts.
+
 ### Admin access
 
 The only entry point is the `©` character in the site footer (`src/App.jsx`, styled
 `cursor-default` so it does not look clickable). It opens the sign-in modal.
 
+The dashboard's product editor changes React state only — there is no product database, the
+catalogue is `src/data/products.js`. Edits vanish on reload and visitors never see them; the UI
+says so (`SessionOnlyNotice`). Making them persist would need a Firestore collection, rules and
+a deploy, which has not been built.
+
 ## Deployment state — important context
 
-As of the last session, **nothing has been deployed**:
+As of 2026-10-04:
 
-- Commits exist locally and may not be pushed to GitHub (`origin/main`).
-- **`firestore.rules` has never been deployed.** The file is inert until pushed to Firebase.
-  Until then the project's live rules are whatever is configured in the console.
-- Firebase Hosting IS now configured in `firebase.json` (serves `dist/`, rewrites all unknown
-  paths to /index.html, long-cache on hashed assets). Deploy with
-  `firebase deploy --only hosting`. Free on the Spark plan.
-- Whether `coollivinguae.com` currently serves anything, and where its DNS points, is unconfirmed.
+- **Production is Vercel**, auto-deploying from GitHub `main` (project `coolliving-uae`; there is
+  no local `.vercel` link and the Vercel CLI is not installed). Pushing to `main` deploys.
+- **`coollivinguae.com` is live.** Registered at Porkbun, DNS on Porkbun's nameservers: apex
+  `A 216.198.79.1`, `www` CNAME to Vercel. `www` and `coolliving-uae.vercel.app` redirect to the
+  apex, which must stay the primary because every canonical URL, the sitemap and robots.txt use
+  it. Porkbun's MX/SPF records provide email forwarding — keep them.
+- Firebase Hosting is configured in `firebase.json` but has never been deployed or used.
+- **Whether `firestore.rules` has been deployed is unconfirmed.** Anonymous reads of both
+  collections are denied by the live rules (checked 2026-10-04), but that is also true of a
+  locked console default. Until the repo's rules are deployed, the live rules are whatever is
+  configured in the console.
 
 Deploying rules requires `firebase login`, which needs an interactive browser sign-in that Claude
 Code cannot complete. That step must be run by the user.
