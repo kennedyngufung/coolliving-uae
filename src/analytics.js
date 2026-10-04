@@ -17,7 +17,9 @@
  * CONSENT MODEL (Google Consent Mode v2)
  *   Storage is denied by default and stays denied until the visitor accepts
  *   the cookie banner. Until then GA receives no identifiers and sets no
- *   cookies. Declining is honoured for the session and remembered.
+ *   cookies. Declining is honoured for the session and remembered. Accepting
+ *   grants analytics storage only; advertising storage is never granted,
+ *   because the site runs no ads.
  * ---------------------------------------------------------------------------
  */
 
@@ -94,16 +96,17 @@ export function initAnalytics(storedConsent) {
 /**
  * Applies the visitor's cookie choice.
  *
+ * Only analytics storage follows the banner. The advertising signals keep the
+ * 'denied' default set in initAnalytics(): the site runs no ads, and the
+ * banner asks for analytics only, so granting ad storage on "Accept" would go
+ * beyond what the visitor agreed to.
+ *
  * @param {boolean} granted
  */
 export function setAnalyticsConsent(granted) {
   if (!initialised || typeof window.gtag !== 'function') return;
-  const value = granted ? 'granted' : 'denied';
   window.gtag('consent', 'update', {
-    analytics_storage: value,
-    ad_storage: value,
-    ad_user_data: value,
-    ad_personalization: value,
+    analytics_storage: granted ? 'granted' : 'denied',
   });
 }
 

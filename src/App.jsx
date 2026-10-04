@@ -12,12 +12,13 @@ import {
 } from 'lucide-react';
 import { products as catalogueProducts, formatPriceBand, priceBandMidpoint } from './data/products';
 import { uaeACDatabase } from './data/calculatorAcs';
+import { hasActiveAffiliateProgramme } from './affiliate';
 import AffiliateLink from './components/AffiliateLink';
 import AffiliateDisclosure from './components/AffiliateDisclosure';
 import ProductImage from './components/ProductImage';
 import { submitReview, fetchApprovedReviews, EMIRATES, LIMITS, REVIEWS_COLLECTION } from './reviews';
 import { pathToRoute, routeToPath } from './routes';
-import { initAnalytics, setAnalyticsConsent, trackPageView } from './analytics';
+import { initAnalytics, isAnalyticsConfigured, setAnalyticsConsent, trackPageView } from './analytics';
 
 /** Blank state for the admin product forms. Mirrors the data/products.js field contract. */
 const EMPTY_PRODUCT_FORM = {
@@ -40,11 +41,11 @@ const faqData = [
   },
   {
     question: "Will a smart thermostat really lower my DEWA bill?",
-    answer: "Yes, significantly. Standard UAE thermostats often over-cool because they lack precision sensors. A smart thermostat (like Nest or Ecobee) uses geofencing to turn the AC down when you leave and provides 'short-cycle' protection. On average, our tested homes in Dubai Marina and Downtown saw a 15-22% reduction in monthly cooling costs."
+    answer: "Usually, yes — though how much depends on your home. Standard UAE thermostats often over-cool because they lack precision sensors. A smart thermostat (like Nest or Ecobee) uses schedules and geofencing to ease the AC off when nobody is home, and provides 'short-cycle' protection. Manufacturers publish savings estimates, but treat them as best-case figures: insulation, sun exposure, usage habits and your DEWA tariff all change the result."
   },
   {
     question: "How often should I change air purifier filters in Dubai?",
-    answer: "Due to fine desert dust and high construction activity in areas like Business Bay or JVC, we recommend checking your filters every 3 months. While many HEPA filters claim a 1-year lifespan, in the UAE's high-dust environment, they typically reach capacity much sooner. Replacing them timely ensures 99.97% filtration of PM2.5 sand particles."
+    answer: "Due to fine desert dust and high construction activity in areas like Business Bay or JVC, we recommend checking your filters every 3 months. While many HEPA filters claim a 1-year lifespan, in the UAE's high-dust environment, they typically reach capacity much sooner. Replacing them on time keeps a HEPA filter working to its rating — capturing at least 99.97% of particles 0.3 microns across, which covers fine PM2.5 dust."
   },
   {
     question: "Do inverter ACs actually work better in the Gulf heat?",
@@ -180,7 +181,9 @@ const ProductCard = ({ product, navigate }) => {
           className="absolute top-2 right-2 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow flex items-center gap-1"
           title="CoolLivingUAE editorial score — our own assessment, not a user rating"
         >
-          <Star size={10} fill="currentColor" /> {product.editorialScore}
+          {/* Labelled on the badge itself: a bare star and number reads as an
+              average of customer ratings, which this is not. */}
+          <Star size={10} fill="currentColor" aria-hidden="true" /> Our score {product.editorialScore}
         </div>
       </div>
       <div className="p-5 flex flex-col flex-grow">
@@ -278,7 +281,7 @@ const ReviewCard = ({ review }) => {
 
 // --- PAGES ---
 const HomePage = ({ products, categories, navigate }) => {
-  useEffect(() => updateSEO('Best Smart Cooling & Energy Saving Tech in UAE 2026', 'Independent reviews of 60+ cooling products for the UAE climate.'), []);
+  useEffect(() => updateSEO('Best Smart Cooling & Energy Saving Tech in UAE 2026', 'Independent, research-based reviews of air conditioners, air purifiers and smart thermostats for the UAE climate.'), []);
 
   // Approved resident reviews only. The section stays hidden until real
   // submissions have been moderated through — an empty testimonial rail is
@@ -296,7 +299,7 @@ const HomePage = ({ products, categories, navigate }) => {
         <div className="absolute top-0 right-0 opacity-10 pointer-events-none"><Wind size={400} /></div>
         <div className="max-w-4xl mx-auto text-center relative z-10">
           <h1 className="text-4xl md:text-6xl font-extrabold mb-6 leading-tight tracking-tight">Master the UAE Climate with <span className="text-teal-400">Smart Technology</span></h1>
-          <p className="text-lg md:text-xl text-blue-100 mb-10 max-w-2xl mx-auto">Discover expert reviews on the top 60+ ACs and purifiers specifically tested for Dubai's extreme summer heat.</p>
+          <p className="text-lg md:text-xl text-blue-100 mb-10 max-w-2xl mx-auto">Independent, research-based reviews of {products.length} air conditioners, air purifiers and smart thermostats, assessed for Dubai's extreme summer heat.</p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <button onClick={() => navigate('category', { id: 'smart-acs' })} className="bg-teal-500 hover:bg-teal-400 text-white font-bold py-4 px-8 rounded-full shadow-lg transition-transform hover:-translate-y-1">Explore Smart ACs</button>
             <button onClick={() => navigate('guides')} className="bg-white/10 hover:bg-white/20 backdrop-blur-md text-white font-bold py-4 px-8 rounded-full border border-white/30 transition-colors">DEWA Saving Guides</button>
@@ -331,7 +334,7 @@ const HomePage = ({ products, categories, navigate }) => {
               <div>
                 <div className="inline-flex items-center gap-2 bg-teal-500/20 border border-teal-400/30 rounded-full px-4 py-2 text-teal-300 text-xs font-bold uppercase tracking-widest mb-4"><Zap size={12} /> New Feature</div>
                 <h2 className="text-2xl md:text-3xl font-extrabold mb-3 leading-tight">Not Sure Which AC Size You Need?</h2>
-                <p className="text-blue-100 max-w-lg leading-relaxed">Enter your room dimensions and our UAE T3 climate calculator instantly tells you the exact BTU required — then shows you the cheapest matching ACs on Amazon.ae and Noon right now.</p>
+                <p className="text-blue-100 max-w-lg leading-relaxed">Enter your room dimensions and our UAE T3 climate calculator estimates the BTU capacity you need — then lists matching ACs, lowest indicative price band first, with links to Amazon.ae and Noon.</p>
               </div>
               <button onClick={() => navigate('calculator')} className="flex-shrink-0 bg-teal-500 hover:bg-teal-400 text-white font-black py-4 px-8 rounded-2xl shadow-lg transition-transform hover:-translate-y-1 flex items-center gap-2 text-sm whitespace-nowrap">
                 <Thermometer size={18} /> Try AC Calculator <ChevronRight size={16} />
@@ -845,44 +848,54 @@ const PrivacyPolicyPage = () => {
     <div className="max-w-4xl mx-auto px-6 py-20 animate-in fade-in">
       <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-8 md:p-12">
         <h1 className="text-3xl font-black text-slate-900 mb-6">Privacy Policy for CoolLivingUAE</h1>
-        <p className="text-sm text-slate-400 mb-8 font-bold">Last Updated: February 28, 2026</p>
+        <p className="text-sm text-slate-400 mb-8 font-bold">Last Updated: October 4, 2026</p>
         
         <div className="space-y-8 text-slate-600 leading-relaxed">
           <section>
             <h2 className="text-xl font-bold text-slate-900 mb-3">1. Information We Collect</h2>
-            <p>We do not require users to register or provide personal information to browse our reviews. However, we may collect information in the following ways:</p>
+            <p>You can read every review on CoolLivingUAE without registering or giving us any personal information. We collect information only in the following ways:</p>
             <ul className="list-disc ml-6 mt-2 space-y-2">
+              <li><strong>Installation Requests:</strong> If you ask for an installation quote, we collect your name, phone number, emirate or area, and any details you add. We use them only to arrange the quote you asked for.</li>
+              <li><strong>Resident Reviews:</strong> If you submit a review, we store the name, emirate, optional area, rating and text you provide. Only your name, emirate and area are published with it, and only after we have checked the review.</li>
               <li><strong>Voluntary Correspondence:</strong> If you contact us directly via the provided email (kennedyngufung@gmail.com), we receive your email address.</li>
-              <li><strong>Log Files:</strong> Like most websites, we use log files which track visitors. This includes IP addresses, browser type, ISP, and date/time stamps.</li>
+              <li><strong>Log Files:</strong> Like most websites, our hosting provider keeps standard server logs, which include IP addresses, browser type, and date/time stamps.</li>
             </ul>
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-slate-900 mb-3">2. Cookies and Web Beacons</h2>
-            <p>CoolLivingUAE uses 'cookies' to store information including visitors' preferences and the pages on the website that the visitor accessed. This information is used to optimize the user experience.</p>
+            <h2 className="text-xl font-bold text-slate-900 mb-3">2. Cookies</h2>
+            <p>CoolLivingUAE does not use advertising cookies. Google Analytics cookies, when we use them, are set only after you accept them in our cookie banner, and your choice is remembered in your browser's local storage. Our Cookies Policy lists everything the site stores.</p>
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-slate-900 mb-3">3. Google DoubleClick DART Cookie</h2>
-            <p>Google is one of the third-party vendors on our site. It uses cookies, known as DART cookies, to serve ads based upon your visit to our site and other sites on the internet. You may choose to decline these via Google’s ad settings.</p>
+            <h2 className="text-xl font-bold text-slate-900 mb-3">3. Advertising</h2>
+            <p>This site does not display third-party advertising. If that changes, we will update this policy before any advertising goes live.</p>
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-slate-900 mb-3">4. Advertising Partners & Third-Party Services</h2>
-            <p>Some of our partners use cookies. Our primary third-party services include:</p>
+            <h2 className="text-xl font-bold text-slate-900 mb-3">4. Third-Party Services</h2>
+            <p>We rely on the following third parties:</p>
             <ul className="list-disc ml-6 mt-2 space-y-2">
-              <li><strong>Google AdSense:</strong> Used to display advertisements. They automatically receive your IP address when this occurs.</li>
-              <li><strong>Amazon Associates & Affiliate Programs:</strong> As an affiliate site, we provide links to third-party stores. When you click these links, a "cookie" tracks the referral so we can earn a small commission at no extra cost to you.</li>
+              <li><strong>Amazon.ae and Noon.ae:</strong> Our product links take you to these retailers. Third parties, including Amazon, may serve content, collect information directly from visitors, and place or recognise cookies on your browser when you visit their sites. {hasActiveAffiliateProgramme()
+                ? 'Those cookies are also how a referral from our site is attributed, which may earn us a commission at no extra cost to you.'
+                : 'Once we are approved for their affiliate programmes, those cookies will also be how a referral from our site is attributed, at no extra cost to you.'}</li>
+              <li><strong>Google Firebase:</strong> Stores installation requests and review submissions on Google's infrastructure.</li>
+              <li><strong>Vercel:</strong> Hosts this website and keeps the server logs described above.</li>
             </ul>
           </section>
 
           <section>
             <h2 className="text-xl font-bold text-slate-900 mb-3">5. Data Collection & Analytics</h2>
-            <p>We may use tools like <strong>Google Analytics</strong> to monitor traffic and user behavior to help us improve our cooling guides. This data is aggregated and anonymous.</p>
+            <p>We may use <strong>Google Analytics</strong> to understand how visitors use the site, to help us improve our cooling guides. It runs only if you accept analytics cookies, and the reports we see are aggregated.</p>
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-slate-900 mb-3">6. Consent</h2>
+            <h2 className="text-xl font-bold text-slate-900 mb-3">6. Your Requests</h2>
+            <p>To ask what personal data we hold about you, or to have an installation request or review you submitted deleted, email <strong>kennedyngufung@gmail.com</strong>.</p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-bold text-slate-900 mb-3">7. Consent</h2>
             <p>By using our website, you hereby consent to our Privacy Policy and agree to its terms. If you have any questions, contact us at <strong>kennedyngufung@gmail.com</strong>.</p>
           </section>
         </div>
@@ -901,7 +914,7 @@ const CookiesPolicyPage = () => {
           <div className="bg-blue-50 p-4 rounded-2xl text-blue-600"><ShieldCheck size={32} /></div>
           <div>
             <h1 className="text-3xl font-black text-slate-900">Cookies Policy</h1>
-            <p className="text-sm text-slate-400 font-bold mt-1">Last Updated: February 28, 2026</p>
+            <p className="text-sm text-slate-400 font-bold mt-1">Last Updated: October 4, 2026</p>
           </div>
         </div>
         <div className="bg-blue-50 border border-blue-100 rounded-2xl p-6 mb-10">
@@ -914,13 +927,13 @@ const CookiesPolicyPage = () => {
           </section>
           <section>
             <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2"><span className="bg-blue-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0">2</span> How We Use Cookies</h2>
-            <p className="mb-4">CoolLivingUAE uses cookies for several purposes. We categorise them as follows:</p>
+            <p className="mb-4">This is everything the site stores in your browser, grouped by purpose:</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[
-                { title: 'Strictly Necessary Cookies', desc: 'These are essential for the website to function. Without them, services you have asked for (like browsing our AC reviews) cannot be provided. They do not gather information for marketing.' },
-                { title: 'Performance Cookies', desc: 'These cookies collect anonymous information on how visitors use our website — for example, which pages are visited most often. We use this data to improve your experience.' },
-                { title: 'Functionality Cookies', desc: 'These remember choices you make (such as your preferred language or region) to provide a more personalised experience and avoid repeating preferences on return visits.' },
-                { title: 'Targeting & Advertising Cookies', desc: 'Set by our advertising partners (Google AdSense, Amazon Associates), these cookies track your browsing habits to deliver relevant ads and affiliate product recommendations.' },
+                { title: 'Strictly Necessary', desc: 'Your cookie choice is remembered in your browser\'s local storage so we do not ask again on every page. It is not sent to us or to anyone else.' },
+                { title: 'Analytics (Optional)', desc: 'Google Analytics cookies (_ga and _ga_*) show us which pages are useful. They are set only after you accept them in our cookie banner.' },
+                { title: 'Advertising', desc: 'None. This site displays no third-party advertising and sets no advertising cookies.' },
+                { title: 'Retailer Cookies', desc: 'When you follow a link to Amazon.ae or Noon.ae, those retailers may set their own cookies on their own sites, under their own policies.' },
               ].map((item, i) => (
                 <div key={i} className="bg-slate-50 rounded-2xl p-5 border border-slate-100">
                   <h4 className="font-bold text-slate-900 text-sm mb-2">{item.title}</h4>
@@ -931,13 +944,13 @@ const CookiesPolicyPage = () => {
           </section>
           <section>
             <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2"><span className="bg-blue-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0">3</span> Third-Party Cookies</h2>
-            <p className="mb-4">In addition to our own cookies, we may also use various third-party cookies to report usage statistics of the website and deliver advertisements:</p>
+            <p className="mb-4">The third-party services we use, and what they may store:</p>
             <ul className="list-none space-y-3 ml-0">
               {[
-                { name: 'Google Analytics & AdSense', detail: 'Used to analyse site traffic and serve contextual advertisements based on your interests and browsing history.' },
-                { name: 'Amazon Associates', detail: 'When you click our product recommendation links to Amazon.ae, Amazon may set a cookie to track the referral for commission purposes.' },
+                { name: 'Google Analytics', detail: 'Analyses site traffic, only after you accept analytics cookies. We do not use it for advertising.' },
+                { name: 'Amazon Associates', detail: 'When you click our product recommendation links to Amazon.ae, Amazon may set a cookie on its own site, which is how an affiliate referral is attributed.' },
                 { name: 'Noon Affiliate Network', detail: 'Similar to Amazon, Noon may set a tracking cookie when you visit their platform via our recommendation links.' },
-                { name: 'Firebase (Google)', detail: 'Used for our installation request backend. Firebase may use performance and analytics cookies to ensure the service reliability.' },
+                { name: 'Firebase (Google)', detail: 'Stores installation requests and review submissions. It sets no cookies for visitors to this site.' },
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-3 bg-gray-50 rounded-xl p-4">
                   <CheckCircle size={16} className="text-teal-500 flex-shrink-0 mt-0.5" />
@@ -953,9 +966,8 @@ const CookiesPolicyPage = () => {
                 <thead><tr className="bg-slate-900 text-white"><th className="p-3 text-left rounded-tl-xl text-xs font-bold uppercase tracking-widest">Cookie Type</th><th className="p-3 text-left text-xs font-bold uppercase tracking-widest">Duration</th><th className="p-3 text-left rounded-tr-xl text-xs font-bold uppercase tracking-widest">Purpose</th></tr></thead>
                 <tbody>
                   {[
-                    ['Session Cookies', 'Deleted on browser close', 'Temporary preferences & navigation state'],
-                    ['Google Analytics', 'Up to 2 years', 'Traffic analytics and user behaviour analysis'],
-                    ['Google AdSense', 'Up to 2 years', 'Ad personalisation and frequency capping'],
+                    ['Cookie choice (local storage)', 'Until you clear site data', 'Remembers whether you accepted or declined analytics'],
+                    ['Google Analytics', 'Up to 2 years', 'Traffic analytics — only if you accept'],
                     ['Amazon Affiliate', '24 hours (standard)', 'Referral tracking for commission calculation'],
                     ['Noon Affiliate', '30 days', 'Referral tracking for commission calculation'],
                   ].map(([type, duration, purpose], i) => (
@@ -973,7 +985,7 @@ const CookiesPolicyPage = () => {
                 <div key={browser} className="bg-slate-900 text-white rounded-2xl p-4 text-center text-sm font-bold">{browser}</div>
               ))}
             </div>
-            <p className="mt-4 text-sm text-slate-500">Visit each browser's settings under "Privacy" or "Cookies" to manage your preferences. You may also opt out of Google's use of cookies by visiting the <strong>Google Ad Settings page</strong>.</p>
+            <p className="mt-4 text-sm text-slate-500">Visit each browser's settings under "Privacy" or "Cookies" to manage your preferences. To change your analytics choice, clear this site's data in your browser and the cookie banner will ask again on your next visit.</p>
           </section>
           <section>
             <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2"><span className="bg-blue-600 text-white w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0">6</span> Contact Us</h2>
@@ -995,7 +1007,7 @@ const AffiliateDisclosurePage = () => {
           <div className="bg-orange-50 p-4 rounded-2xl text-orange-500"><LinkIcon size={32} /></div>
           <div>
             <h1 className="text-3xl font-black text-slate-900">Affiliate Disclosure</h1>
-            <p className="text-sm text-slate-400 font-bold mt-1">Last Updated: February 28, 2026</p>
+            <p className="text-sm text-slate-400 font-bold mt-1">Last Updated: October 4, 2026</p>
           </div>
         </div>
 
@@ -1009,7 +1021,7 @@ const AffiliateDisclosurePage = () => {
         <div className="space-y-10 text-slate-600 leading-relaxed">
           <section>
             <h2 className="text-xl font-bold text-slate-900 mb-4">Who We Are</h2>
-            <p>CoolLivingUAE is an independent product review and information platform based in Dubai, UAE. Our mission is to help residents of the Emirates make informed purchasing decisions about cooling technology, air purification, and energy management. We test or thoroughly research all products we review.</p>
+            <p>CoolLivingUAE is an independent product review and information platform based in Dubai, UAE. Our mission is to help residents of the Emirates make informed purchasing decisions about cooling technology, air purification, and energy management. We research every product we review from manufacturer specifications, independent certifications and published sources — and we do not claim hands-on testing we have not carried out.</p>
           </section>
 
           <section>
@@ -1094,7 +1106,7 @@ const SecurityPage = () => {
                 { icon: Activity, title: 'No Stored Payment Data', desc: 'CoolLivingUAE never processes payments directly. All transactions go through Amazon.ae, Noon.ae, or other retailer checkouts. We never see or store your card details.', badge: 'Verified', badgeColor: 'bg-blue-100 text-blue-700' },
                 { icon: User, title: 'Minimal Data Collection', desc: 'We collect only what is needed: contact email for support, and installation request details for service coordination. No unnecessary personal data is retained.', badge: 'Privacy-First', badgeColor: 'bg-teal-100 text-teal-700' },
                 { icon: Zap, title: 'Content Delivery Network (CDN)', desc: 'Our site is served through a global CDN with DDoS protection, ensuring high availability and protection against volumetric attacks even during UAE summer traffic peaks.', badge: 'Protected', badgeColor: 'bg-green-100 text-green-700' },
-                { icon: Settings, title: 'Admin Access Control', desc: 'Our admin panel is protected by a time-limited access key system. Admin sessions are not persisted in browser storage and expire immediately on page close.', badge: 'Secured', badgeColor: 'bg-slate-100 text-slate-700' },
+                { icon: Settings, title: 'Admin Access Control', desc: 'Our admin panel signs in through Firebase Authentication, and only accounts on an approved list can read installation requests or moderate reviews. Firestore security rules enforce that on Google\'s servers — it does not rely on hiding the page.', badge: 'Secured', badgeColor: 'bg-slate-100 text-slate-700' },
               ].map(({ icon: Icon, title, desc, badge, badgeColor }, i) => (
                 <div key={i} className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
                   <div className="flex items-start justify-between mb-3">
@@ -1161,7 +1173,6 @@ const SecurityPage = () => {
                 { name: 'Google Firebase', detail: 'ISO 27001 certified, SOC 2/3 compliant, data encrypted at rest and in transit.' },
                 { name: 'Amazon.ae', detail: 'PCI-DSS Level 1 compliant. Transactions processed on Amazon\'s secure infrastructure.' },
                 { name: 'Noon.ae', detail: 'UAE-based e-commerce platform with SSL encryption and PCI-compliant payment processing.' },
-                { name: 'Google AdSense', detail: 'Industry-standard ad serving security. Does not expose user PII to advertisers.' },
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-3 bg-gray-50 rounded-xl p-4 border border-gray-100">
                   <ShieldCheck size={16} className="text-teal-500 flex-shrink-0 mt-0.5" />
@@ -1184,7 +1195,7 @@ const SecurityPage = () => {
 // --- AC ROOM SIZE CALCULATOR PAGE ---
 
 const ACCalculatorPage = ({ navigate }) => {
-  useEffect(() => updateSEO('AC Size Calculator for UAE | Find the Right BTU for Your Room', 'Calculate the exact AC capacity you need for any room in Dubai or UAE and get the best-priced recommendations.'), []);
+  useEffect(() => updateSEO('AC Size Calculator for UAE | Find the Right BTU for Your Room', 'Estimate the AC capacity (BTU and tonnage) you need for any room in Dubai or the UAE, with matching units and indicative price ranges.'), []);
 
   const [dims, setDims] = useState({ length: '', width: '', height: '' });
   const [roomType, setRoomType] = useState('bedroom');
@@ -1250,7 +1261,7 @@ const ACCalculatorPage = ({ navigate }) => {
         <div className="relative z-10 max-w-2xl">
           <div className="inline-flex items-center gap-2 bg-teal-500/20 border border-teal-400/30 rounded-full px-4 py-2 text-teal-300 text-xs font-bold uppercase tracking-widest mb-4"><Zap size={12} /> UAE T3 Climate Calculator</div>
           <h1 className="text-3xl md:text-4xl font-extrabold mb-4 leading-tight">Find the Right AC for <span className="text-teal-400">Your Room Size</span></h1>
-          <p className="text-blue-100 leading-relaxed">Enter your room dimensions below. Our calculator uses UAE T3 climate standards — calibrated for Dubai's extreme summers — to instantly recommend the correct AC capacity and the lowest-priced options available today on Amazon.ae and Noon.</p>
+          <p className="text-blue-100 leading-relaxed">Enter your room dimensions below. Our calculator applies UAE T3 climate sizing — calibrated for Dubai's extreme summers — to estimate the AC capacity your room needs and list matching units by indicative price band, with links to Amazon.ae and Noon.</p>
         </div>
       </div>
 
@@ -1445,15 +1456,16 @@ const CookieConsentBanner = ({ onAccept, onDecline, navigate }) => (
           <div>
             <p className="font-bold text-white text-sm mb-1">Cookie Preferences</p>
             <p className="text-slate-300 text-xs leading-relaxed">
-              We use cookies to enhance your experience, serve personalised ads via Google AdSense, and analyse traffic via Google Analytics. By clicking <strong>"Accept All"</strong>, you consent to our use of cookies as described in our{' '}
-              <button onClick={() => { onDecline(); navigate('cookies'); }} className="text-teal-400 underline hover:text-teal-300">Cookies Policy</button>.
-              Declining will limit personalised content and analytics.
+              With your permission we use Google Analytics cookies to see which pages are useful. Nothing is set unless you accept, and the site works the same either way. Retailers such as Amazon.ae set their own cookies when you visit them. See our{' '}
+              {/* Reading the policy is not a choice either way, so this must not
+                  record a decline — the banner stays until the visitor decides. */}
+              <button onClick={() => navigate('cookies')} className="text-teal-400 underline hover:text-teal-300">Cookies Policy</button>.
             </p>
           </div>
         </div>
         <div className="flex gap-3 flex-shrink-0 w-full md:w-auto">
           <button onClick={onDecline} className="flex-1 md:flex-none bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 px-5 rounded-xl transition-colors text-sm">Decline</button>
-          <button onClick={onAccept} className="flex-1 md:flex-none bg-teal-500 hover:bg-teal-400 text-white font-bold py-2.5 px-5 rounded-xl transition-colors text-sm">Accept All</button>
+          <button onClick={onAccept} className="flex-1 md:flex-none bg-teal-500 hover:bg-teal-400 text-white font-bold py-2.5 px-5 rounded-xl transition-colors text-sm">Accept</button>
         </div>
       </div>
     </div>
@@ -2486,7 +2498,10 @@ export default function App() {
   });
   const [showCookieBanner, setShowCookieBanner] = useState(false);
   useEffect(() => {
-    if (!cookieConsent) { const t = setTimeout(() => setShowCookieBanner(true), 1200); return () => clearTimeout(t); }
+    // Only ask when there is something to consent to. With no GA4 measurement
+    // ID configured the site sets no optional cookies at all, and a banner
+    // requesting permission for them would itself be misleading.
+    if (!cookieConsent && isAnalyticsConfigured()) { const t = setTimeout(() => setShowCookieBanner(true), 1200); return () => clearTimeout(t); }
   }, [cookieConsent]);
   const handleCookieAccept = () => {
     try { localStorage.setItem('clua_cookie_consent', 'accepted'); } catch {}
