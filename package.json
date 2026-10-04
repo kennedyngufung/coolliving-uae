@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "prerender": "node scripts/prerender.mjs",
     "generate-sitemap": "node scripts/generate-sitemap.mjs",
-    "check-images": "node scripts/check-images.mjs"
+    "check-images": "node scripts/check-images.mjs",
+    "generate-brand-assets": "node scripts/generate-brand-assets.mjs"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.2.1",
