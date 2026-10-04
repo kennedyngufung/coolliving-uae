@@ -370,18 +370,36 @@ const HomePage = ({ products, categories, navigate }) => {
   );
 };
 
+/**
+ * Installation lead field limits. Mirrored in firestore.rules
+ * (match /installationRequests) — change both together, or the rules will
+ * reject requests this form accepts and the visitor sees a generic failure.
+ */
+const LEAD_LIMITS = {
+  name: { min: 2, max: 80 },
+  phone: { min: 6, max: 25 },
+  message: { max: 1000 },
+};
+
+// Digits with optional leading +, spaces, brackets and dashes, 6–25 characters.
+const PHONE_PATTERN = /^\+?[\d\s()-]{6,25}$/;
+
+const EMPTY_LEAD = {
+  name: '',
+  phone: '',
+  location: '',
+  propertyType: '',
+  acType: '',
+  acCapacity: '',
+  message: '',
+};
+
 const InstallationPage = ({ productId, products, navigate }) => {
   const product = products.find(p => p.id === productId);
   const [submitted, setSubmitted] = useState(false);
-  const [formData, setFormData] = useState({
-  name: "",
-  phone: "",
-  location: "",
-  propertyType: "",
-  acType: "",
-  acCapacity: "",
-  message: ""
-});
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [formData, setFormData] = useState(EMPTY_LEAD);
 
   useEffect(() => {
     // A form rather than content, and one exists per product: indexing them
@@ -394,8 +412,7 @@ const InstallationPage = ({ productId, products, navigate }) => {
     );
   }, [product]);
 
- 
-if (submitted) {
+  if (submitted) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center text-center px-6">
         <h2 className="text-3xl font-bold mb-4 text-green-600">
@@ -412,47 +429,55 @@ if (submitted) {
           Return to Home
         </button>
       </div>
-      );
+    );
   }
 
- const handleSubmit = async (e) => {
-  e.preventDefault();
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    // A double click must not file the same lead twice.
+    if (submitting) return;
+    setError('');
 
+    const name = formData.name.trim();
+    const phone = formData.phone.trim();
+    const message = formData.message.trim();
 
- 
-  try {
-    await addDoc(collection(db, "installationRequests"), {
-      name: formData.name,
-      phone: formData.phone,
-      location: formData.location,
-      propertyType: formData.propertyType,
-      acType: formData.acType,
-      acCapacity: formData.acCapacity,
-      message: formData.message,
-      createdAt: serverTimestamp()
-    });
+    // Checked here because firestore.rules enforces the same limits and would
+    // otherwise reject the write with an error the visitor cannot act on.
+    if (name.length < LEAD_LIMITS.name.min || name.length > LEAD_LIMITS.name.max) {
+      setError(`Please enter your name (${LEAD_LIMITS.name.min}–${LEAD_LIMITS.name.max} characters).`);
+      return;
+    }
+    if (!PHONE_PATTERN.test(phone)) {
+      setError('Please enter a phone number we can reach you on, e.g. 0501234567 or +971 50 123 4567.');
+      return;
+    }
 
-    setSubmitted(true);   // 👈 THIS triggers success screen
+    setSubmitting(true);
+    try {
+      await addDoc(collection(db, "installationRequests"), {
+        name,
+        phone,
+        location: formData.location,
+        propertyType: formData.propertyType,
+        acType: formData.acType,
+        acCapacity: formData.acCapacity,
+        message,
+        createdAt: serverTimestamp()
+      });
+      setFormData(EMPTY_LEAD);
+      setSubmitted(true);
+    } catch (err) {
+      // Permission and network failures surface here. The detail matters in
+      // development; a visitor needs a message they can act on, not an alert.
+      if (import.meta.env.DEV) console.error('[installation] submit failed:', err);
+      setError('We could not send your request just now. Please try again in a moment, or email us at kennedyngufung@gmail.com.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
-  
-    // Reset form after submit
-    setFormData({
-      name: "",
-      phone: "",
-      location: "",
-      propertyType: "",
-      acType: "",
-      acCapacity: "",
-      message: ""
-    });
-
-  } catch (error) {
-    console.error("Error saving request:", error);
-    alert("Something went wrong. Please try again.");
-  }
-};
-       
-        
+  const inputCls = 'w-full bg-slate-50 border border-slate-200 rounded-xl p-4 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-50 transition-all';
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-20 animate-in slide-in-from-bottom-8">
@@ -467,72 +492,76 @@ if (submitted) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm font-bold" role="alert">
+              {error}
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold uppercase text-slate-400 mb-2">Full Name</label>
+              <label htmlFor="lead-name" className="block text-xs font-bold uppercase text-slate-400 mb-2">Full Name</label>
               <input
-  required
-  type="text"
-  value={formData.name}
-  onChange={(e) =>
-    setFormData({ ...formData, name: e.target.value })
-  }
-  placeholder="e.g. Ahmed Mansoor"
-  className="w-full bg-slate-50 border rounded-xl p-4 outline-none focus:border-blue-500"
-/>
+                id="lead-name"
+                required
+                type="text"
+                autoComplete="name"
+                minLength={LEAD_LIMITS.name.min}
+                maxLength={LEAD_LIMITS.name.max}
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g. Ahmed Mansoor"
+                className={inputCls}
+              />
             </div>
             <div>
-              <label className="block text-xs font-bold uppercase text-slate-400 mb-2">
-  Contact Number
-</label>
-
-<input
-  required
-  type="tel"
-  value={formData.phone}
-  onChange={(e) =>
-    setFormData({ ...formData, phone: e.target.value })
-  }
-  placeholder="e.g. 0501234567"
-  className="w-full bg-slate-50 border rounded-xl p-4 outline-none focus:border-blue-500"
-/>
+              <label htmlFor="lead-phone" className="block text-xs font-bold uppercase text-slate-400 mb-2">Contact Number</label>
+              <input
+                id="lead-phone"
+                required
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                minLength={LEAD_LIMITS.phone.min}
+                maxLength={LEAD_LIMITS.phone.max}
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                placeholder="e.g. 0501234567"
+                className={inputCls}
+              />
             </div>
           </div>
           <div>
-            <label className="block text-xs font-bold uppercase text-slate-400 mb-2">
-  Emirate / Location
-</label>
-
-<select
-  required
-  value={formData.location}
-  onChange={(e) =>
-    setFormData({ ...formData, location: e.target.value })
-  }
-  className="w-full bg-slate-50 border rounded-xl p-4 outline-none focus:border-blue-500 appearance-none"
->
-  <option value="">Select your city</option>
-  <option value="Dubai - Marina / JBR / JLT">Dubai - Marina / JBR / JLT</option>
-  <option value="Dubai - Downtown / Business Bay">Dubai - Downtown / Business Bay</option>
-  <option value="Dubai - Other">Dubai - Other</option>
-  <option value="Abu Dhabi City">Abu Dhabi City</option>
-  <option value="Sharjah / Ajman">Sharjah / Ajman</option>
-</select>
+            <label htmlFor="lead-location" className="block text-xs font-bold uppercase text-slate-400 mb-2">Emirate / Location</label>
+            <select
+              id="lead-location"
+              required
+              value={formData.location}
+              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              className={`${inputCls} appearance-none`}
+            >
+              <option value="">Select your city</option>
+              <option value="Dubai - Marina / JBR / JLT">Dubai - Marina / JBR / JLT</option>
+              <option value="Dubai - Downtown / Business Bay">Dubai - Downtown / Business Bay</option>
+              <option value="Dubai - Other">Dubai - Other</option>
+              <option value="Abu Dhabi City">Abu Dhabi City</option>
+              <option value="Sharjah / Ajman">Sharjah / Ajman</option>
+            </select>
           </div>
           <div>
-            <label className="block text-xs font-bold uppercase text-slate-400 mb-2">Additional Details</label>
+            <label htmlFor="lead-message" className="block text-xs font-bold uppercase text-slate-400 mb-2">Additional Details</label>
             <textarea
-  placeholder="Tell us about your unit or specific requirements..."
-  rows="4"
-  value={formData.message}
-  onChange={(e) =>
-    setFormData({ ...formData, message: e.target.value })
-  }
-  className="w-full bg-slate-50 border rounded-xl p-4 outline-none focus:border-blue-500"
-></textarea>
-</div>
-          <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black hover:bg-blue-700 transition-all shadow-lg flex items-center justify-center gap-2">
-            Submit Quote Request <ChevronRight size={20} />
+              id="lead-message"
+              placeholder="Tell us about your unit or specific requirements..."
+              rows="4"
+              maxLength={LEAD_LIMITS.message.max}
+              value={formData.message}
+              onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+              className={inputCls}
+            ></textarea>
+          </div>
+          <button type="submit" disabled={submitting}
+            className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black hover:bg-blue-700 transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+            {submitting ? 'Sending…' : <>Submit Quote Request <ChevronRight size={20} /></>}
           </button>
           <p className="text-[10px] text-center text-slate-400 italic font-medium">By submitting, you agree to be contacted by our partner installers.</p>
         </form>
