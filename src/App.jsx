@@ -16,6 +16,7 @@ import { hasActiveAffiliateProgramme } from './affiliate';
 import AffiliateLink from './components/AffiliateLink';
 import AffiliateDisclosure from './components/AffiliateDisclosure';
 import ProductImage from './components/ProductImage';
+import RouteLink from './components/RouteLink';
 import { submitReview, fetchApprovedReviews, EMIRATES, LIMITS, REVIEWS_COLLECTION } from './reviews';
 import { pathToRoute, routeToPath } from './routes';
 import { initAnalytics, isAnalyticsConfigured, setAnalyticsConsent, trackPageView } from './analytics';
@@ -141,21 +142,15 @@ const updateSEO = (title, description, path = '', imageUrl = '', noIndex = false
   });
 };
 
-// --- ADSENSE (clean — no fake placeholder text) ---
-const AdSense = ({ slotId, type = 'horizontal' }) => (
-  <div className={`my-8 mx-auto w-full overflow-hidden ${type === 'sidebar' ? 'min-h-[600px]' : 'min-h-[120px]'}`}
-    data-ad-slot={slotId} aria-hidden="true" />
-);
-
 // --- BREADCRUMBS ---
 const Breadcrumbs = ({ items, navigate }) => (
-  <nav className="flex items-center gap-2 text-xs font-bold text-slate-400 mb-6 overflow-x-auto whitespace-nowrap pb-2">
-    <span onClick={() => navigate('/')} className="hover:text-blue-600 cursor-pointer flex items-center gap-1"><Home size={12} /> Home</span>
+  <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs font-bold text-slate-400 mb-6 overflow-x-auto whitespace-nowrap pb-2">
+    <RouteLink to="/" navigate={navigate} className="hover:text-blue-600 flex items-center gap-1"><Home size={12} /> Home</RouteLink>
     {items.map((item, idx) => (
       <React.Fragment key={idx}>
         <ChevronRight size={10} />
         {item.path ? (
-          <span onClick={() => navigate(item.path, item.params)} className="hover:text-blue-600 cursor-pointer">{item.name}</span>
+          <RouteLink to={item.path} params={item.params} navigate={navigate} className="hover:text-blue-600">{item.name}</RouteLink>
         ) : (
           <span className="text-slate-900">{item.name}</span>
         )}
@@ -188,17 +183,19 @@ const ProductCard = ({ product, navigate }) => {
       </div>
       <div className="p-5 flex flex-col flex-grow">
         <div className="text-[10px] text-blue-500 font-bold mb-1 uppercase tracking-widest">{product.brand}</div>
-        <h3 className="font-bold text-gray-900 text-sm leading-tight mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">{product.title}</h3>
+        <h3 className="font-bold text-gray-900 text-sm leading-tight mb-2 line-clamp-2 group-hover:text-blue-600 transition-colors">
+          <RouteLink to="product" params={{ id: product.id }} navigate={navigate} onClick={e => e.stopPropagation()}>{product.title}</RouteLink>
+        </h3>
         <div className="mb-4">
           <div className="text-lg font-black text-gray-900">{formatPriceBand(product.priceBand)}</div>
           <div className="text-[9px] text-slate-400 uppercase tracking-widest">Indicative range</div>
         </div>
         <div className="mt-auto space-y-2">
           <div className="flex gap-2">
-            <button onClick={e => { e.stopPropagation(); navigate('product', { id: product.id }); }}
+            <RouteLink to="product" params={{ id: product.id }} navigate={navigate} onClick={e => e.stopPropagation()}
               className="flex-1 bg-gray-50 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 text-gray-700 font-bold py-2 rounded-lg transition-all text-xs border border-gray-100 flex items-center justify-center gap-1">
               Full Review <ChevronRight size={12} />
-            </button>
+            </RouteLink>
             <AffiliateLink
               query={product.amazonQuery}
               trackingLabel={product.title}
@@ -301,13 +298,12 @@ const HomePage = ({ products, categories, navigate }) => {
           <h1 className="text-4xl md:text-6xl font-extrabold mb-6 leading-tight tracking-tight">Master the UAE Climate with <span className="text-teal-400">Smart Technology</span></h1>
           <p className="text-lg md:text-xl text-blue-100 mb-10 max-w-2xl mx-auto">Independent, research-based reviews of {products.length} air conditioners, air purifiers and smart thermostats, assessed for Dubai's extreme summer heat.</p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <button onClick={() => navigate('category', { id: 'smart-acs' })} className="bg-teal-500 hover:bg-teal-400 text-white font-bold py-4 px-8 rounded-full shadow-lg transition-transform hover:-translate-y-1">Explore Smart ACs</button>
-            <button onClick={() => navigate('guides')} className="bg-white/10 hover:bg-white/20 backdrop-blur-md text-white font-bold py-4 px-8 rounded-full border border-white/30 transition-colors">DEWA Saving Guides</button>
+            <RouteLink to="category" params={{ id: 'smart-acs' }} navigate={navigate} className="text-center bg-teal-500 hover:bg-teal-400 text-white font-bold py-4 px-8 rounded-full shadow-lg transition-transform hover:-translate-y-1">Explore Smart ACs</RouteLink>
+            <RouteLink to="guides" navigate={navigate} className="text-center bg-white/10 hover:bg-white/20 backdrop-blur-md text-white font-bold py-4 px-8 rounded-full border border-white/30 transition-colors">DEWA Saving Guides</RouteLink>
           </div>
         </div>
       </section>
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <AdSense slotId="home-top-banner" />
         <section className="mb-20">
           <h2 className="text-3xl font-bold text-gray-900 mb-8">Best Smart Tech for UAE Homes (2026)</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -317,10 +313,10 @@ const HomePage = ({ products, categories, navigate }) => {
                   <div className="bg-blue-50 text-blue-600 p-4 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-colors flex-shrink-0"><cat.icon size={28} /></div>
                   <div><h3 className="font-bold text-xl text-gray-900 mb-1">{cat.name}</h3><p className="text-gray-500 text-sm leading-relaxed">{cat.description}</p></div>
                 </div>
-                <button onClick={() => navigate('category', { id: cat.id })}
+                <RouteLink to="category" params={{ id: cat.id }} navigate={navigate}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all text-sm flex items-center justify-center gap-2 shadow-sm group-hover:shadow-md">
-                  Browse Reviews <ChevronRight size={16} />
-                </button>
+                  Browse {cat.name} <ChevronRight size={16} />
+                </RouteLink>
               </div>
             ))}
           </div>
@@ -336,9 +332,9 @@ const HomePage = ({ products, categories, navigate }) => {
                 <h2 className="text-2xl md:text-3xl font-extrabold mb-3 leading-tight">Not Sure Which AC Size You Need?</h2>
                 <p className="text-blue-100 max-w-lg leading-relaxed">Enter your room dimensions and our UAE T3 climate calculator estimates the BTU capacity you need — then lists matching ACs, lowest indicative price band first, with links to Amazon.ae and Noon.</p>
               </div>
-              <button onClick={() => navigate('calculator')} className="flex-shrink-0 bg-teal-500 hover:bg-teal-400 text-white font-black py-4 px-8 rounded-2xl shadow-lg transition-transform hover:-translate-y-1 flex items-center gap-2 text-sm whitespace-nowrap">
+              <RouteLink to="calculator" navigate={navigate} className="flex-shrink-0 bg-teal-500 hover:bg-teal-400 text-white font-black py-4 px-8 rounded-2xl shadow-lg transition-transform hover:-translate-y-1 flex items-center gap-2 text-sm whitespace-nowrap">
                 <Thermometer size={18} /> Try AC Calculator <ChevronRight size={16} />
-              </button>
+              </RouteLink>
             </div>
           </div>
         </section>
@@ -347,7 +343,7 @@ const HomePage = ({ products, categories, navigate }) => {
         <section className={residentReviews.length > 0 ? 'mb-20' : 'hidden'}>
            <div className="flex items-center justify-between mb-8">
               <h2 className="text-3xl font-bold text-gray-900">What Residents Say</h2>
-              <button onClick={() => navigate('reviews')} className="text-blue-600 font-bold text-sm hover:underline flex items-center gap-1">View All <ChevronRight size={16} /></button>
+              <RouteLink to="reviews" navigate={navigate} className="text-blue-600 font-bold text-sm hover:underline flex items-center gap-1">View All <ChevronRight size={16} /></RouteLink>
            </div>
            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {residentReviews.map(review => <ReviewCard key={review.id} review={review} />)}
@@ -387,10 +383,14 @@ const InstallationPage = ({ productId, products, navigate }) => {
   message: ""
 });
 
- useEffect(() => {
+  useEffect(() => {
+    // A form rather than content, and one exists per product: indexing them
+    // would add 60 near-identical pages. The title previously read
+    // "Request Installation - undefined" when no product was chosen.
     updateSEO(
-      `Request Installation - ${product?.brand}`,
-      "Professional HVAC installation across Dubai, Abu Dhabi and Sharjah."
+      product ? `Request Installation - ${product.brand}` : 'Request Installation',
+      "Professional HVAC installation across Dubai, Abu Dhabi and Sharjah.",
+      '', '', true
     );
   }, [product]);
 
@@ -693,10 +693,29 @@ const ReviewsPage = () => {
   );
 };
 
+/**
+ * Shared "not found" body. Every caller must also pass noIndex to updateSEO:
+ * the server has already answered 200, so without it a mistyped product or
+ * category URL becomes an indexable "soft 404" in Search Console.
+ */
+const NotFoundMessage = ({ navigate, title = '404 — Page Not Found', message = 'That page does not exist, or has moved.' }) => (
+  <div className="p-20 text-center">
+    <h1 className="text-3xl font-black text-slate-900 mb-3">{title}</h1>
+    <p className="text-slate-500 mb-8">{message}</p>
+    <RouteLink to="/" navigate={navigate} className="inline-block bg-blue-600 text-white font-bold py-3 px-8 rounded-xl hover:bg-blue-700 transition-all">
+      Back to Home
+    </RouteLink>
+  </div>
+);
+
 const CategoryPage = ({ categoryId, categories, products, navigate }) => {
   const category = categories.find(c => c.id === categoryId);
   const categoryProducts = products.filter(p => p.category === categoryId);
-  useEffect(() => { if(category) updateSEO(`${category.name} Reviews for Dubai & UAE (2026)`, category.description); }, [category]);
+  useEffect(() => {
+    if (category) updateSEO(`${category.name} Reviews for Dubai & UAE (2026)`, category.description);
+    else updateSEO('Category Not Found', 'This category does not exist.', '', '', true);
+  }, [category]);
+  if (!category) return <NotFoundMessage navigate={navigate} title="Category not found" message="We do not have a category at this address." />;
   return (
     <div className="max-w-7xl mx-auto px-4 py-12 animate-in fade-in">
       <Breadcrumbs items={[{ name: category?.name }]} navigate={navigate} />
@@ -707,13 +726,8 @@ const CategoryPage = ({ categoryId, categories, products, navigate }) => {
         </div>
       </div>
       <AffiliateDisclosure className="mb-8" />
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
-        <div className="lg:col-span-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-            {categoryProducts.map(product => <ProductCard key={product.id} product={product} navigate={navigate} />)}
-          </div>
-        </div>
-        <aside className="hidden lg:block space-y-8"><AdSense slotId="category-sidebar" type="sidebar" /></aside>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
+        {categoryProducts.map(product => <ProductCard key={product.id} product={product} navigate={navigate} />)}
       </div>
     </div>
   );
@@ -721,70 +735,68 @@ const CategoryPage = ({ categoryId, categories, products, navigate }) => {
 
 const ProductReviewPage = ({ productId, products, navigate }) => {
   const product = products.find(p => p.id === productId);
-  useEffect(() => { if(product) updateSEO(`${product.title} Review & Best Price UAE`, product.description); }, [product]);
-  if (!product) return <div className="p-20 text-center text-slate-500">Product not found.</div>;
+  useEffect(() => {
+    if (product) updateSEO(`${product.title} Review & Best Price UAE`, product.description);
+    else updateSEO('Product Not Found', 'This product does not exist or has been removed.', '', '', true);
+  }, [product]);
+  if (!product) return <NotFoundMessage navigate={navigate} title="Product not found" message="This product does not exist, or has been removed from our reviews." />;
   return (
-    <div className="max-w-7xl mx-auto px-4 py-10 animate-in fade-in">
+    <div className="max-w-5xl mx-auto px-4 py-10 animate-in fade-in">
       <Breadcrumbs items={[{ name: 'Products', path: 'category', params: {id: product.category} }, { name: product.brand }]} navigate={navigate} />
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-        <div className="lg:col-span-8">
-          <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden mb-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-10 p-10">
-              <div className="relative">
-                <ProductImage
-                  src={product.image}
-                  alt={product.title}
-                  brand={product.brand}
-                  category={product.category}
-                  priority
-                  className="w-full aspect-square rounded-2xl shadow-lg border border-gray-100 p-6"
-                  caption={`Representative ${product.brand} photo — the exact model and capacity may differ. Check the retailer listing before you buy.`}
-                />
-                <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm p-3 rounded-xl shadow-sm border border-gray-100">
-                   <div className="text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Editorial Score</div>
-                   <div className="text-2xl font-black text-blue-600 flex items-center gap-1">{product.editorialScore} <Star size={20} fill="currentColor" /></div>
-                   <div className="text-[9px] text-slate-400 mt-1">CoolLivingUAE assessment</div>
-                </div>
-              </div>
-              <div className="flex flex-col">
-                <div className="text-blue-600 font-bold uppercase tracking-widest text-xs mb-2">{product.brand} • Editorial Review</div>
-                <h1 className="text-3xl font-extrabold mb-4 text-slate-900 leading-tight">{product.title}</h1>
-                <div className="mb-6">
-                  <div className="text-3xl font-black text-slate-900">{formatPriceBand(product.priceBand)}</div>
-                  <div className="text-xs text-slate-400 mt-1">Indicative range — check the retailer for the current price.</div>
-                </div>
-                <div className="bg-slate-50 rounded-2xl p-6 mb-6 border border-slate-100">
-                  <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2"><FileText size={18} className="text-blue-500" /> Our Verdict</h3>
-                  <p className="text-slate-600 leading-relaxed text-sm">{product.description}</p>
-                </div>
-                <AffiliateDisclosure className="mb-4" />
-                <div className="space-y-3">
-                  <AffiliateLink
-                    query={product.amazonQuery}
-                    trackingLabel={product.title}
-                    className="w-full bg-orange-500 text-white py-4 rounded-xl font-black hover:bg-orange-600 transition-all shadow-lg flex items-center justify-center gap-2"
-                  >
-                    Check Price on Amazon.ae <ExternalLink size={18} />
-                  </AffiliateLink>
-                  <button onClick={() => navigate('installation', { id: product.id })} className="w-full bg-green-600 text-white py-4 rounded-xl font-black hover:bg-green-700 transition-all shadow-lg flex items-center justify-center gap-2">Get Installation Quote <Settings size={18} /></button>
-                </div>
-              </div>
+      <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 p-6 md:p-10">
+          <div className="relative">
+            <ProductImage
+              src={product.image}
+              alt={product.title}
+              brand={product.brand}
+              category={product.category}
+              priority
+              className="w-full aspect-square rounded-2xl shadow-lg border border-gray-100 p-6"
+              caption={`Representative ${product.brand} photo — the exact model and capacity may differ. Check the retailer listing before you buy.`}
+            />
+            <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm p-3 rounded-xl shadow-sm border border-gray-100">
+               <div className="text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Editorial Score</div>
+               <div className="text-2xl font-black text-blue-600 flex items-center gap-1">{product.editorialScore} <Star size={20} fill="currentColor" /></div>
+               <div className="text-[9px] text-slate-400 mt-1">CoolLivingUAE assessment</div>
             </div>
           </div>
-
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
-            <h3 className="text-xl font-bold text-slate-900 mb-3">How we assess these products</h3>
-            <p className="text-slate-600 text-sm leading-relaxed">
-              Our verdicts are editorial opinions formed from manufacturer specifications,
-              published certifications and independent research, and the UAE service and
-              warranty terms each brand offers. We weight T3 compressor certification,
-              corrosion resistance, and after-sales coverage heavily, because those are the
-              factors that determine whether a unit still performs after several Gulf summers.
-              Where we have not tested a product ourselves, we do not claim to have done so.
-            </p>
+          <div className="flex flex-col">
+            <div className="text-blue-600 font-bold uppercase tracking-widest text-xs mb-2">{product.brand} • Editorial Review</div>
+            <h1 className="text-3xl font-extrabold mb-4 text-slate-900 leading-tight">{product.title}</h1>
+            <div className="mb-6">
+              <div className="text-3xl font-black text-slate-900">{formatPriceBand(product.priceBand)}</div>
+              <div className="text-xs text-slate-400 mt-1">Indicative range — check the retailer for the current price.</div>
+            </div>
+            <div className="bg-slate-50 rounded-2xl p-6 mb-6 border border-slate-100">
+              <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2"><FileText size={18} className="text-blue-500" /> Our Verdict</h3>
+              <p className="text-slate-600 leading-relaxed text-sm">{product.description}</p>
+            </div>
+            <AffiliateDisclosure className="mb-4" />
+            <div className="space-y-3">
+              <AffiliateLink
+                query={product.amazonQuery}
+                trackingLabel={product.title}
+                className="w-full bg-orange-500 text-white py-4 rounded-xl font-black hover:bg-orange-600 transition-all shadow-lg flex items-center justify-center gap-2"
+              >
+                Check Price on Amazon.ae <ExternalLink size={18} />
+              </AffiliateLink>
+              <button onClick={() => navigate('installation', { id: product.id })} className="w-full bg-green-600 text-white py-4 rounded-xl font-black hover:bg-green-700 transition-all shadow-lg flex items-center justify-center gap-2">Get Installation Quote <Settings size={18} /></button>
+            </div>
           </div>
         </div>
-        <aside className="lg:col-span-4"><AdSense slotId="product-sidebar" type="sidebar" /></aside>
+      </div>
+
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+        <h3 className="text-xl font-bold text-slate-900 mb-3">How we assess these products</h3>
+        <p className="text-slate-600 text-sm leading-relaxed">
+          Our verdicts are editorial opinions formed from manufacturer specifications,
+          published certifications and independent research, and the UAE service and
+          warranty terms each brand offers. We weight T3 compressor certification,
+          corrosion resistance, and after-sales coverage heavily, because those are the
+          factors that determine whether a unit still performs after several Gulf summers.
+          Where we have not tested a product ourselves, we do not claim to have done so.
+        </p>
       </div>
     </div>
   );
@@ -1381,7 +1393,7 @@ const ACCalculatorPage = ({ navigate }) => {
                         <div className="font-bold text-slate-900 text-sm mb-1 line-clamp-2">{cheapestAmazon.model}</div>
                         <div className="text-xl font-black text-slate-900 mb-4">{formatPriceBand(cheapestAmazon.priceBand)}<span className="block text-[10px] font-medium text-slate-400">indicative range</span></div>
                         <AffiliateLink merchant="amazon" query={cheapestAmazon.amazonQuery} trackingLabel={cheapestAmazon.model}
-                          className="block w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition-colors text-sm text-center flex items-center justify-center gap-2">
+                          className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition-colors text-sm text-center flex items-center justify-center gap-2">
                           <ExternalLink size={14} /> Check on Amazon.ae
                         </AffiliateLink>
                       </div>
@@ -1394,7 +1406,7 @@ const ACCalculatorPage = ({ navigate }) => {
                         <div className="font-bold text-slate-900 text-sm mb-1 line-clamp-2">{cheapestNoon.model}</div>
                         <div className="text-xl font-black text-slate-900 mb-4">{formatPriceBand(cheapestNoon.priceBand)}<span className="block text-[10px] font-medium text-slate-400">indicative range</span></div>
                         <AffiliateLink merchant="noon" query={cheapestNoon.noonQuery} trackingLabel={cheapestNoon.model}
-                          className="block w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-xl transition-colors text-sm text-center flex items-center justify-center gap-2">
+                          className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded-xl transition-colors text-sm text-center flex items-center justify-center gap-2">
                           <ExternalLink size={14} /> Check on Noon.ae
                         </AffiliateLink>
                       </div>
@@ -2463,6 +2475,16 @@ const AboutUsSection = () => (
   </section>
 );
 
+/** Primary navigation, shared by the desktop bar and the mobile menu. */
+const NAV_ITEMS = [
+  { label: 'Home', to: '/', isActive: (r) => r.path === '/' },
+  { label: 'AC Reviews', to: 'category', params: { id: 'smart-acs' }, isActive: (r) => r.path === 'category' && r.params?.id === 'smart-acs' },
+  { label: 'AC Calculator', to: 'calculator', isActive: (r) => r.path === 'calculator' },
+  { label: 'Resident Reviews', to: 'reviews', isActive: (r) => r.path === 'reviews' },
+  { label: 'Saving Guides', to: 'guides', isActive: (r) => r.path === 'guides' },
+  { label: 'Contact', to: 'contact', isActive: (r) => r.path === 'contact' },
+];
+
 // --- MAIN APP ---
 export default function App() {
   // Initial route comes from the URL, so deep links and refreshes land on the
@@ -2472,11 +2494,14 @@ export default function App() {
   );
   const [showSecurityGate, setShowSecurityGate] = useState(false);
   const [products, setProducts] = useState(initialProducts);
+  // The header navigation is hidden below the md breakpoint, so phones need
+  // this menu — without it the only way around the site was the footer.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // Back and forward buttons. Without this the browser changes the URL but the
   // app keeps rendering whatever it rendered last.
   useEffect(() => {
-    const onPopState = () => setRoute(pathToRoute(window.location.pathname));
+    const onPopState = () => { setMobileNavOpen(false); setRoute(pathToRoute(window.location.pathname)); };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -2548,6 +2573,7 @@ export default function App() {
       window.history.pushState({}, '', url);
     }
     window.scrollTo(0, 0);
+    setMobileNavOpen(false);
     setRoute({ path, params });
   };
   const handleLogout = async () => {
@@ -2598,15 +2624,7 @@ export default function App() {
         // sent 200 with index.html. Marking it noindex is what stops Google
         // recording these as thin, indexable "soft 404" pages.
         updateSEO('Page Not Found', 'This page does not exist.', '', '', true);
-        return (
-          <div className="p-20 text-center">
-            <h1 className="text-3xl font-black text-slate-900 mb-3">404 — Page Not Found</h1>
-            <p className="text-slate-500 mb-8">That page does not exist, or has moved.</p>
-            <button onClick={() => navigate('/')} className="bg-blue-600 text-white font-bold py-3 px-8 rounded-xl hover:bg-blue-700 transition-all">
-              Back to Home
-            </button>
-          </div>
-        );
+        return <NotFoundMessage navigate={navigate} />;
     }
   };
 
@@ -2616,29 +2634,82 @@ export default function App() {
       {showCookieBanner && <CookieConsentBanner onAccept={handleCookieAccept} onDecline={handleCookieDecline} navigate={navigate} />}
       <header className="bg-white shadow-sm sticky top-0 z-50 border-b h-20 flex items-center">
         <div className="max-w-7xl mx-auto px-4 w-full flex justify-between items-center">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
+          <RouteLink to="/" navigate={navigate} className="flex items-center gap-2">
             <div className="bg-gradient-to-br from-blue-600 to-teal-500 text-white p-2 rounded-lg"><Wind size={24} /></div>
             <span className="font-extrabold text-2xl text-gray-900 tracking-tight">CoolLiving<span className="text-blue-600">UAE</span></span>
-          </div>
-          <nav className="hidden md:flex space-x-8 font-bold text-gray-600 text-sm">
-            <span onClick={() => navigate('/')} className={`cursor-pointer hover:text-blue-600 ${route.path === '/' ? 'text-blue-600' : ''}`}>Home</span>
-            <span onClick={() => navigate('category', {id: 'smart-acs'})} className={`cursor-pointer hover:text-blue-600 ${route.params?.id === 'smart-acs' ? 'text-blue-600' : ''}`}>AC Reviews</span>
-            <span onClick={() => navigate('calculator')} className={`cursor-pointer hover:text-blue-600 ${route.path === 'calculator' ? 'text-blue-600' : ''}`}>AC Calculator</span>
-            <span onClick={() => navigate('reviews')} className={`cursor-pointer hover:text-blue-600 ${route.path === 'reviews' ? 'text-blue-600' : ''}`}>Resident Reviews</span>
-            <span onClick={() => navigate('guides')} className={`cursor-pointer hover:text-blue-600 ${route.path === 'guides' ? 'text-blue-600' : ''}`}>Saving Guides</span>
-            <span onClick={() => navigate('contact')} className={`cursor-pointer hover:text-blue-600 ${route.path === 'contact' ? 'text-blue-600' : ''}`}>Contact</span>
+          </RouteLink>
+          <nav aria-label="Main" className="hidden md:flex space-x-8 font-bold text-gray-600 text-sm">
+            {NAV_ITEMS.map(item => {
+              const active = item.isActive(route);
+              return (
+                <RouteLink key={item.label} to={item.to} params={item.params} navigate={navigate}
+                  aria-current={active ? 'page' : undefined}
+                  className={`hover:text-blue-600 ${active ? 'text-blue-600' : ''}`}>
+                  {item.label}
+                </RouteLink>
+              );
+            })}
           </nav>
+          <button type="button" onClick={() => setMobileNavOpen(open => !open)}
+            aria-expanded={mobileNavOpen} aria-controls="mobile-nav" aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+            className="md:hidden p-2 -mr-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors">
+            {mobileNavOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
         </div>
+        {mobileNavOpen && (
+          <nav id="mobile-nav" aria-label="Main" className="md:hidden absolute top-full inset-x-0 bg-white border-b border-gray-200 shadow-lg">
+            <ul className="max-w-7xl mx-auto px-4 py-2 divide-y divide-gray-100">
+              {NAV_ITEMS.map(item => {
+                const active = item.isActive(route);
+                return (
+                  <li key={item.label}>
+                    <RouteLink to={item.to} params={item.params} navigate={navigate}
+                      aria-current={active ? 'page' : undefined}
+                      className={`block py-3 font-bold text-sm ${active ? 'text-blue-600' : 'text-gray-700'}`}>
+                      {item.label}
+                    </RouteLink>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+        )}
       </header>
       <main className="flex-grow">{renderPage()}</main>
       <AboutUsSection />
       <footer className="bg-slate-900 text-slate-400 py-12">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-10 mb-10 border-b border-slate-800 pb-10">
+          {/* Five columns: the grid previously declared four, which pushed
+              Support onto a row of its own. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-10 mb-10 border-b border-slate-800 pb-10">
             <div><div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">CoolLivingUAE</div><p className="text-xs leading-relaxed">Independent reviewer of cooling tech for T3 desert climates. Helping Dubai residents save on energy.</p></div>
-            <div><div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">Quick Links</div><ul className="text-xs space-y-2"><li className="hover:text-white cursor-pointer" onClick={() => navigate('/')}>Home</li><li className="hover:text-white cursor-pointer" onClick={() => navigate('reviews')}>Resident Reviews</li><li className="hover:text-white cursor-pointer" onClick={() => navigate('guides')}>DEWA Saving Guide</li></ul></div>
-            <div><div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">Legal</div><ul className="text-xs space-y-2"><li className="hover:text-white cursor-pointer" onClick={() => navigate('privacy')}>Privacy Policy</li><li className="hover:text-white cursor-pointer" onClick={() => navigate('cookies')}>Cookies Policy</li><li className="hover:text-white cursor-pointer" onClick={() => navigate('terms')}>Terms of Service</li><li className="hover:text-white cursor-pointer" onClick={() => navigate('affiliate')}>Affiliate Disclosure</li><li className="hover:text-white cursor-pointer" onClick={() => navigate('security')}>Security</li></ul></div>
-            <div><div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">Tools</div><ul className="text-xs space-y-2"><li className="hover:text-white cursor-pointer" onClick={() => navigate('calculator')}>AC Size Calculator</li><li className="hover:text-white cursor-pointer" onClick={() => navigate('guides')}>DEWA Saving Guide</li><li className="hover:text-white cursor-pointer" onClick={() => navigate('reviews')}>Resident Reviews</li></ul></div>
+            <div>
+              <div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">Quick Links</div>
+              <ul className="text-xs space-y-2">
+                <li><RouteLink to="/" navigate={navigate} className="hover:text-white">Home</RouteLink></li>
+                {initialCategories.map(cat => (
+                  <li key={cat.id}><RouteLink to="category" params={{ id: cat.id }} navigate={navigate} className="hover:text-white">{cat.name}</RouteLink></li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">Legal</div>
+              <ul className="text-xs space-y-2">
+                <li><RouteLink to="privacy" navigate={navigate} className="hover:text-white">Privacy Policy</RouteLink></li>
+                <li><RouteLink to="cookies" navigate={navigate} className="hover:text-white">Cookies Policy</RouteLink></li>
+                <li><RouteLink to="terms" navigate={navigate} className="hover:text-white">Terms of Service</RouteLink></li>
+                <li><RouteLink to="affiliate" navigate={navigate} className="hover:text-white">Affiliate Disclosure</RouteLink></li>
+                <li><RouteLink to="security" navigate={navigate} className="hover:text-white">Security</RouteLink></li>
+              </ul>
+            </div>
+            <div>
+              <div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">Tools</div>
+              <ul className="text-xs space-y-2">
+                <li><RouteLink to="calculator" navigate={navigate} className="hover:text-white">AC Size Calculator</RouteLink></li>
+                <li><RouteLink to="guides" navigate={navigate} className="hover:text-white">DEWA Saving Guide</RouteLink></li>
+                <li><RouteLink to="reviews" navigate={navigate} className="hover:text-white">Resident Reviews</RouteLink></li>
+              </ul>
+            </div>
             <div><div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">Support</div><p className="text-[10px] mb-2 font-mono">kennedyngufung@gmail.com</p><div className="text-[10px] text-slate-500 italic">Dubai, United Arab Emirates</div></div>
           </div>
           <div className="text-center pt-4">
