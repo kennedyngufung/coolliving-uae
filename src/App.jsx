@@ -8,7 +8,7 @@ import {
   XCircle, Thermometer, Wind, Zap, Link as LinkIcon, 
   Plus, Edit, Trash2, ExternalLink, Settings, BarChart, Lock, Save,
   Calendar, Clock, User, Star, Mail, MapPin, MessageSquare, ArrowLeft, LogOut,
-  Droplets, Sun, Activity, HelpCircle, ChevronDown, ChevronUp, Quote
+  Droplets, Sun, Activity, HelpCircle, ChevronDown, ChevronUp, Quote, RotateCcw
 } from 'lucide-react';
 import { products as catalogueProducts, formatPriceBand, priceBandMidpoint } from './data/products';
 import { uaeACDatabase } from './data/calculatorAcs';
@@ -17,6 +17,11 @@ import AffiliateLink from './components/AffiliateLink';
 import AffiliateDisclosure from './components/AffiliateDisclosure';
 import ProductImage from './components/ProductImage';
 import RouteLink from './components/RouteLink';
+import ImageLinkField from './components/ImageLinkField';
+import { buildCatalogue, validateProductForm } from './catalogueMerge';
+import {
+  fetchCatalogueOverrides, saveEdit, addProduct, hideProduct, restoreOriginal, removeAddedProduct,
+} from './catalogue';
 import { submitReview, fetchApprovedReviews, EMIRATES, LIMITS, REVIEWS_COLLECTION } from './reviews';
 import { pathToRoute, routeToPath } from './routes';
 import { initAnalytics, isAnalyticsConfigured, setAnalyticsConsent, trackPageView } from './analytics';
@@ -58,7 +63,6 @@ const faqData = [
   }
 ];
 
-const initialProducts = catalogueProducts;
 
 // --- SEO ENGINE (Full OG + Twitter + Canonical + JSON-LD) ---
 // Site origin, used for canonical URLs and Open Graph tags.
@@ -762,12 +766,21 @@ const CategoryPage = ({ categoryId, categories, products, navigate }) => {
   );
 };
 
-const ProductReviewPage = ({ productId, products, navigate }) => {
+const ProductReviewPage = ({ productId, products, catalogueStatus, navigate }) => {
   const product = products.find(p => p.id === productId);
+  // Admin-added products only exist once the catalogue read completes
+  // (src/catalogue.js). Until then an unknown id is "not known yet", not
+  // missing — marking it noindex now could drop a real product from Google.
+  const pending = !product && catalogueStatus === 'loading';
   useEffect(() => {
     if (product) updateSEO(`${product.title} Review & Best Price UAE`, product.description);
-    else updateSEO('Product Not Found', 'This product does not exist or has been removed.', '', '', true);
-  }, [product]);
+    else if (catalogueStatus === 'error') updateSEO('Product Unavailable', 'This product could not be loaded.', '', '', true);
+    else if (catalogueStatus === 'ready') updateSEO('Product Not Found', 'This product does not exist or has been removed.', '', '', true);
+  }, [product, catalogueStatus]);
+  if (pending) return <div className="p-20 text-center text-slate-400 font-bold">Loading…</div>;
+  if (!product && catalogueStatus === 'error') {
+    return <NotFoundMessage navigate={navigate} title="Product unavailable" message="We couldn't load this product just now. Please try again in a moment." />;
+  }
   if (!product) return <NotFoundMessage navigate={navigate} title="Product not found" message="This product does not exist, or has been removed from our reviews." />;
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 animate-in fade-in">
@@ -1753,32 +1766,51 @@ const AdminSecurityGate = ({ onVerify, onCancel }) => {
 };
 
 /**
- * Product edits in the dashboard live only in React state. The catalogue has
- * no database behind it — it is src/data/products.js, built into the site —
- * so a change made here disappears on reload and is never seen by visitors.
- * The buttons previously said "Publish" and "It's now live on the site".
+ * Holds the product tabs until the stored overrides have loaded. A form
+ * opened before then would show original values, and saving it would
+ * silently discard changes made earlier.
  */
-const SessionOnlyNotice = () => (
-  <div role="note" className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 text-amber-900 text-sm">
-    <HelpCircle size={18} className="text-amber-500 flex-shrink-0 mt-0.5" />
-    <p>
-      <strong>Preview only — changes here are not saved.</strong> They last until you reload this
-      page and are never shown to visitors. To change the live catalogue, edit{' '}
-      <code className="font-mono text-xs">src/data/products.js</code> and redeploy.
-    </p>
-  </div>
-);
+const CatalogueGate = ({ status, onRetry, children }) => {
+  if (status === 'loading') {
+    return <div className="bg-white rounded-2xl border border-gray-100 p-16 text-center text-slate-400 font-bold">Loading products…</div>;
+  }
+  if (status === 'error') {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-red-700 text-sm font-bold flex flex-col sm:flex-row sm:items-center justify-between gap-4" role="alert">
+        <span>Your saved product changes could not be loaded, so editing is paused — saving now could overwrite them.</span>
+        <button onClick={onRetry} className="bg-white border border-red-200 px-4 py-2 rounded-xl text-xs font-black hover:bg-red-100 flex-shrink-0">Retry</button>
+      </div>
+    );
+  }
+  return children;
+};
 
-const AdminDashboard = ({ products, setProducts, onLogout }) => {
+/** Success or failure of the last product action. */
+const ProductNotice = ({ notice, onDismiss }) => {
+  if (!notice) return null;
+  const isError = notice.tone === 'error';
+  return (
+    <div role={isError ? 'alert' : 'status'}
+      className={`rounded-2xl p-4 flex items-start gap-3 text-sm font-bold border ${isError ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-800'}`}>
+      {isError ? <XCircle size={20} className="flex-shrink-0" /> : <CheckCircle size={20} className="flex-shrink-0 text-green-500" />}
+      <span className="flex-grow">{notice.text}</span>
+      <button onClick={onDismiss} className="text-xs font-bold opacity-60 hover:opacity-100 flex-shrink-0">Dismiss</button>
+    </div>
+  );
+};
+
+const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, catalogueActions, onLogout }) => {
   const [tab, setTab]               = useState('overview');
   const [leads, setLeads]           = useState([]);
   const [leadsLoading, setLeadsLoading] = useState(false);
   const [leadsError, setLeadsError] = useState('');
   const [editingProduct, setEditingProduct] = useState(null);
   const [formState, setFormState]   = useState(null);
+  const [editError, setEditError]   = useState('');
   const [addForm, setAddForm]       = useState(EMPTY_PRODUCT_FORM);
-  const [addSuccess, setAddSuccess] = useState(false);
   const [addError, setAddError]     = useState('');
+  const [productNotice, setProductNotice] = useState(null); // { tone: 'success' | 'error', text }
+  const [busyProduct, setBusyProduct] = useState('');       // id being saved, or 'new'
   const [search, setSearch]         = useState('');
   const [catFilter, setCatFilter]   = useState('all');
   const [savingLead, setSavingLead] = useState('');
@@ -1870,78 +1902,90 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
   };
 
   // ── Product helpers ────────────────────────────────────────────────────
-  const startEdit   = (p) => {
+  // Every action saves through catalogueActions; local state changes only
+  // when the save succeeded, and productNotice reports the outcome.
+  // busyProduct is cleared after the try/catch rather than in a finally: the
+  // React Compiler lint cannot analyse try/finally and silently skips the whole
+  // component when it meets one.
+  const startEdit = (p) => {
     setEditingProduct(p.id);
+    setEditError('');
     // Flatten the price band so it maps onto two numeric form inputs.
-    setFormState({ ...p, priceMin: p.priceBand?.min ?? '', priceMax: p.priceBand?.max ?? '' });
+    setFormState({ ...p, priceMin: p.priceBand?.min ?? '', priceMax: p.priceBand?.max ?? '', tons: p.tons ?? '' });
     setTab('products');
   };
-  const handleSave  = () => {
-    const min = Number(formState.priceMin);
-    const max = Number(formState.priceMax);
-    if (!Number.isFinite(min) || !Number.isFinite(max) || min <= 0 || max < min) {
-      window.alert('Enter a valid price band — both values numeric, and the maximum at least the minimum.');
-      return;
+
+  const handleSave = async () => {
+    const { ok, record, firstError } = validateProductForm(formState);
+    if (!ok) { setEditError(firstError); return; }
+    setEditError('');
+    setBusyProduct(editingProduct);
+    try {
+      await catalogueActions.saveEdit(editingProduct, record);
+      setProductNotice({ tone: 'success', text: `Saved “${record.title}”. It is live on the site now.` });
+      setEditingProduct(null);
+      setFormState(null);
+    } catch (error) {
+      setEditError(error.message);
     }
-    // priceMin/priceMax are form-only fields; strip them from the stored record.
-    const rest = { ...formState };
-    delete rest.priceMin;
-    delete rest.priceMax;
-    setProducts(products.map(p => p.id === editingProduct
-      ? { ...rest, priceBand: { min, max }, editorialScore: Number(formState.editorialScore) || 0 }
-      : p));
-    setEditingProduct(null);
-    setFormState(null);
+    setBusyProduct('');
   };
-  const handleDelete = (id) => { if (window.confirm('Hide this product for the rest of this session? The live site is not changed.')) setProducts(products.filter(p => p.id !== id)); };
-  const handleAdd   = () => {
+
+  const handleDelete = async (p) => {
+    const question = p.isBuiltIn
+      ? `Hide “${p.title}” from the live site? You can bring it back with Restore original.`
+      : `Permanently delete “${p.title}”? This cannot be undone.`;
+    if (!window.confirm(question)) return;
+    setBusyProduct(p.id);
+    try {
+      if (p.isBuiltIn) await catalogueActions.hideProduct(p.id);
+      else await catalogueActions.removeAddedProduct(p.id);
+      setProductNotice({ tone: 'success', text: p.isBuiltIn ? `“${p.title}” is hidden from the site.` : `“${p.title}” was deleted.` });
+    } catch (error) {
+      setProductNotice({ tone: 'error', text: error.message });
+    }
+    setBusyProduct('');
+  };
+
+  const handleRestore = async (p) => {
+    if (!window.confirm(`Restore “${p.title}” to its original details and show it on the site?`)) return;
+    setBusyProduct(p.id);
+    try {
+      await catalogueActions.restoreOriginal(p.id);
+      setProductNotice({ tone: 'success', text: `“${p.title}” is back to its original details.` });
+    } catch (error) {
+      setProductNotice({ tone: 'error', text: error.message });
+    }
+    setBusyProduct('');
+  };
+
+  const handleAdd = async () => {
     setAddError('');
-    const min = Number(addForm.priceMin);
-    const max = Number(addForm.priceMax);
-
-    if (!addForm.title.trim() || !addForm.brand.trim()) {
-      setAddError('Title and brand are required.');
-      return;
+    const { ok, record, firstError } = validateProductForm(addForm);
+    if (!ok) { setAddError(firstError); return; }
+    setBusyProduct('new');
+    try {
+      const { id } = await catalogueActions.addProduct(record);
+      setAddForm(EMPTY_PRODUCT_FORM);
+      setProductNotice({ tone: 'success', text: `Published “${record.title}”. It is live now at /product/${id}.` });
+    } catch (error) {
+      setAddError(error.message);
     }
-    if (!Number.isFinite(min) || !Number.isFinite(max) || min <= 0 || max < min) {
-      setAddError('Enter a valid price band — both values numeric, and the maximum at least the minimum.');
-      return;
-    }
-    if (!addForm.amazonQuery.trim()) {
-      setAddError('Amazon search terms are required, otherwise the product cannot be linked.');
-      return;
-    }
-    if (/^https?:/i.test(addForm.amazonQuery.trim())) {
-      setAddError('Enter search TERMS, not a URL. Tagged URLs are built automatically.');
-      return;
-    }
-
-    // priceMin/priceMax are form-only fields; strip them from the stored record.
-    const rest = { ...addForm };
-    delete rest.priceMin;
-    delete rest.priceMax;
-    setProducts([...products, {
-      ...rest,
-      id: `${addForm.category}-${Date.now()}`,
-      priceBand: { min, max },
-      editorialScore: Number(addForm.editorialScore) || 0,
-    }]);
-    setAddForm(EMPTY_PRODUCT_FORM);
-    setAddSuccess(true);
-    setTimeout(() => setAddSuccess(false), 3000);
+    setBusyProduct('');
   };
 
   // ── Derived data ────────────────────────────────────────────────────────
-  const filteredProducts = products.filter(p => {
+  const liveProducts = adminProducts.filter(p => !p.isHidden);
+  const filteredProducts = adminProducts.filter(p => {
     const matchCat  = catFilter === 'all' || p.category === catFilter;
     const matchSearch = !search || p.title.toLowerCase().includes(search.toLowerCase()) || p.brand?.toLowerCase().includes(search.toLowerCase());
     return matchCat && matchSearch;
   });
   const newLeads    = leads.filter(l => !l.status || l.status === 'new');
   const doneLeads   = leads.filter(l => l.status === 'done');
-  const acCount     = products.filter(p => p.category === 'smart-acs').length;
-  const purCount    = products.filter(p => p.category === 'air-purifiers').length;
-  const thermoCount = products.filter(p => p.category === 'smart-thermostats').length;
+  const acCount     = liveProducts.filter(p => p.category === 'smart-acs').length;
+  const purCount    = liveProducts.filter(p => p.category === 'air-purifiers').length;
+  const thermoCount = liveProducts.filter(p => p.category === 'smart-thermostats').length;
 
   const tabs = [
     { id: 'overview', label: 'Overview',    icon: BarChart },
@@ -2004,7 +2048,7 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
             {/* Stats Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { label: 'Total Products',    value: products.length,  icon: LayoutList, color: 'bg-blue-50 text-blue-600',   border: 'border-blue-100' },
+                { label: 'Total Products',    value: liveProducts.length,  icon: LayoutList, color: 'bg-blue-50 text-blue-600',   border: 'border-blue-100' },
                 { label: 'New Leads',         value: newLeads.length,  icon: Mail,       color: 'bg-orange-50 text-orange-500', border: 'border-orange-100' },
                 { label: 'Leads Closed',      value: doneLeads.length, icon: CheckCircle,color: 'bg-green-50 text-green-600',  border: 'border-green-100' },
                 { label: 'Total Leads',       value: leads.length,     icon: BarChart,   color: 'bg-teal-50 text-teal-600',   border: 'border-teal-100' },
@@ -2022,9 +2066,9 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
               <h3 className="font-black text-slate-900 mb-5 flex items-center gap-2"><LayoutList size={18} className="text-blue-600" /> Product Breakdown</h3>
               <div className="space-y-4">
                 {[
-                  { label: 'Smart ACs',         count: acCount,     total: products.length, color: 'bg-blue-500' },
-                  { label: 'Air Purifiers',      count: purCount,    total: products.length, color: 'bg-teal-500' },
-                  { label: 'Smart Thermostats',  count: thermoCount, total: products.length, color: 'bg-orange-400' },
+                  { label: 'Smart ACs',         count: acCount,     total: liveProducts.length || 1, color: 'bg-blue-500' },
+                  { label: 'Air Purifiers',      count: purCount,    total: liveProducts.length || 1, color: 'bg-teal-500' },
+                  { label: 'Smart Thermostats',  count: thermoCount, total: liveProducts.length || 1, color: 'bg-orange-400' },
                 ].map(({ label, count, total, color }) => (
                   <div key={label}>
                     <div className="flex justify-between text-sm mb-1.5">
@@ -2049,11 +2093,11 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                 </button>
                 <button onClick={() => setTab('add')} className="flex items-center gap-3 bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-2xl p-4 transition-all text-left">
                   <Plus size={20} className="text-blue-600 flex-shrink-0" />
-                  <div><div className="font-bold text-slate-900 text-sm">Add Product</div><div className="text-xs text-slate-400">Preview a new listing (not saved)</div></div>
+                  <div><div className="font-bold text-slate-900 text-sm">Add Product</div><div className="text-xs text-slate-400">Publish a new product</div></div>
                 </button>
                 <button onClick={() => setTab('products')} className="flex items-center gap-3 bg-teal-50 hover:bg-teal-100 border border-teal-100 rounded-2xl p-4 transition-all text-left">
                   <Edit size={20} className="text-teal-600 flex-shrink-0" />
-                  <div><div className="font-bold text-slate-900 text-sm">Manage Products</div><div className="text-xs text-slate-400">Preview edits (not saved)</div></div>
+                  <div><div className="font-bold text-slate-900 text-sm">Manage Products</div><div className="text-xs text-slate-400">Edit, hide or restore listings</div></div>
                 </button>
               </div>
             </div>
@@ -2195,15 +2239,17 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <h2 className="text-2xl font-black text-slate-900">Product Manager</h2>
-                <p className="text-slate-400 text-sm mt-0.5">{filteredProducts.length} of {products.length} products shown</p>
+                <p className="text-slate-400 text-sm mt-0.5">{filteredProducts.length} of {adminProducts.length} products shown · changes go live immediately</p>
               </div>
               <button onClick={() => setTab('add')} className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm flex items-center gap-2 transition-all">
                 <Plus size={16} /> Add New
               </button>
             </div>
 
-            <SessionOnlyNotice />
+            <ProductNotice notice={productNotice} onDismiss={() => setProductNotice(null)} />
 
+            <CatalogueGate status={catalogueStatus} onRetry={onRetryCatalogue}>
+              <>
             {/* Filters */}
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-grow">
@@ -2234,13 +2280,18 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                 </thead>
                 <tbody>
                   {filteredProducts.map((p, i) => (
-                    <tr key={p.id} className={`border-b last:border-0 hover:bg-blue-50/30 transition-colors ${i % 2 === 0 ? '' : 'bg-slate-50/40'}`}>
+                    <tr key={p.id} className={`border-b last:border-0 hover:bg-blue-50/30 transition-colors ${i % 2 === 0 ? '' : 'bg-slate-50/40'} ${p.isHidden ? 'opacity-60' : ''}`}>
                       <td className="p-5">
                         <div className="flex items-center gap-3">
                           <ProductImage src={p.image} alt={p.title} brand={p.brand} category={p.category} compact className="w-12 h-12 rounded-xl border border-slate-100 flex-shrink-0 p-1" />
                           <div className="min-w-0">
                             <div className="font-bold text-slate-900 text-sm truncate max-w-[180px] md:max-w-xs">{p.title}</div>
-                            <div className="text-xs text-blue-500 font-bold">{p.brand}</div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs text-blue-500 font-bold">{p.brand}</span>
+                              {p.isHidden && <span className="text-[9px] font-black uppercase tracking-widest bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">Hidden</span>}
+                              {p.isEdited && <span className="text-[9px] font-black uppercase tracking-widest bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Edited</span>}
+                              {!p.isBuiltIn && <span className="text-[9px] font-black uppercase tracking-widest bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded">Added</span>}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -2255,12 +2306,19 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                       </td>
                       <td className="p-5 text-center">
                         <div className="flex items-center justify-center gap-2">
-                          <button onClick={() => startEdit(p)} className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-2 rounded-lg transition-colors" title="Edit">
+                          <button onClick={() => startEdit(p)} disabled={busyProduct === p.id} className="bg-blue-50 hover:bg-blue-100 disabled:opacity-50 text-blue-600 p-2 rounded-lg transition-colors" title="Edit">
                             <Edit size={16} />
                           </button>
-                          <button onClick={() => handleDelete(p.id)} className="bg-red-50 hover:bg-red-100 text-red-500 p-2 rounded-lg transition-colors" title="Delete">
-                            <Trash2 size={16} />
-                          </button>
+                          {!p.isHidden && (
+                            <button onClick={() => handleDelete(p)} disabled={busyProduct === p.id} className="bg-red-50 hover:bg-red-100 disabled:opacity-50 text-red-500 p-2 rounded-lg transition-colors" title={p.isBuiltIn ? 'Hide from site' : 'Delete'}>
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                          {p.isBuiltIn && (p.isEdited || p.isHidden) && (
+                            <button onClick={() => handleRestore(p)} disabled={busyProduct === p.id} className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-600 p-2 rounded-lg transition-colors" title="Restore original">
+                              <RotateCcw size={16} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -2271,6 +2329,8 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                 <div className="p-16 text-center text-slate-400 font-bold">No products match your search.</div>
               )}
             </div>
+              </>
+            </CatalogueGate>
           </div>
         )}
 
@@ -2280,7 +2340,7 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
             <button onClick={() => setEditingProduct(null)} className="flex items-center gap-2 text-slate-500 font-bold hover:text-blue-600 transition-colors text-sm">
               <ArrowLeft size={16} /> Back to Products
             </button>
-            <SessionOnlyNotice />
+            <CatalogueGate status={catalogueStatus} onRetry={onRetryCatalogue}>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
               <h2 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2"><Edit size={20} className="text-blue-600" /> Edit Product</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -2317,9 +2377,7 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                   <input className={inputCls} placeholder="e.g. 1.5" value={formState.tons || ''} onChange={e => setFormState({...formState, tons: e.target.value})} />
                 </div>
                 <div className="md:col-span-2">
-                  <label className={labelCls}>Image URL</label>
-                  <input className={inputCls} value={formState.image || ''} onChange={e => setFormState({...formState, image: e.target.value})} />
-                  {formState.image && <img src={formState.image} alt="preview" className="mt-2 h-24 w-auto rounded-xl border border-slate-100 object-cover" onError={e => e.target.style.display='none'} />}
+                  <ImageLinkField id="edit-image" value={formState.image || ''} onChange={(image) => setFormState({ ...formState, image })} inputClassName={inputCls} labelClassName={labelCls} />
                 </div>
                 <div className="md:col-span-2">
                   <label className={labelCls}>Amazon.ae Search Terms</label>
@@ -2332,13 +2390,17 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                   <div className="text-right text-[10px] text-slate-400 mt-1">{formState.description?.length || 0} characters</div>
                 </div>
               </div>
+              {editError && (
+                <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm font-bold" role="alert">{editError}</div>
+              )}
               <div className="flex gap-3 mt-6">
-                <button onClick={handleSave} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm">
-                  <Save size={16} /> Apply to Preview
+                <button onClick={handleSave} disabled={busyProduct === editingProduct} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm">
+                  <Save size={16} /> {busyProduct === editingProduct ? 'Saving…' : 'Save Changes'}
                 </button>
                 <button onClick={() => setEditingProduct(null)} className="px-8 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-xl transition-all">Cancel</button>
               </div>
             </div>
+            </CatalogueGate>
           </div>
         )}
 
@@ -2349,17 +2411,12 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
           <div className="animate-in fade-in space-y-6">
             <div>
               <h2 className="text-2xl font-black text-slate-900">Add New Product</h2>
-              <p className="text-slate-400 text-sm mt-0.5">Preview a new listing in this browser session</p>
+              <p className="text-slate-400 text-sm mt-0.5">Publish a new product to the live site</p>
             </div>
 
-            <SessionOnlyNotice />
+            <ProductNotice notice={productNotice} onDismiss={() => setProductNotice(null)} />
 
-            {addSuccess && (
-              <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex items-center gap-3 text-green-800 font-bold text-sm">
-                <CheckCircle size={20} className="text-green-500 flex-shrink-0" /> Added to this session's preview. Reloading the page removes it; the live site is unchanged.
-              </div>
-            )}
-
+            <CatalogueGate status={catalogueStatus} onRetry={onRetryCatalogue}>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="md:col-span-2">
@@ -2395,9 +2452,7 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                   <input className={inputCls} placeholder="e.g. 1.5" value={addForm.tons} onChange={e => setAddForm({...addForm, tons: e.target.value})} />
                 </div>
                 <div className="md:col-span-2">
-                  <label className={labelCls}>Product Image URL</label>
-                  <input className={inputCls} placeholder="https://..." value={addForm.image} onChange={e => setAddForm({...addForm, image: e.target.value})} />
-                  {addForm.image && <img src={addForm.image} alt="preview" className="mt-2 h-24 w-auto rounded-xl border border-slate-100 object-cover" onError={e => e.target.style.display='none'} />}
+                  <ImageLinkField id="add-image" value={addForm.image} onChange={(image) => setAddForm({ ...addForm, image })} inputClassName={inputCls} labelClassName={labelCls} />
                 </div>
                 <div className="md:col-span-2">
                   <label className={labelCls}>Amazon.ae Search Terms <span className="text-red-400">*</span></label>
@@ -2414,14 +2469,15 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                 <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm font-bold" role="alert">{addError}</div>
               )}
               <div className="flex gap-3 mt-6">
-                <button onClick={handleAdd} disabled={!addForm.title || !addForm.priceMin || !addForm.priceMax}
+                <button onClick={handleAdd} disabled={busyProduct === 'new' || !addForm.title || !addForm.priceMin || !addForm.priceMax}
                   className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm">
-                  <Plus size={16} /> Add to Preview
+                  <Plus size={16} /> {busyProduct === 'new' ? 'Publishing…' : 'Publish Product'}
                 </button>
                 <button onClick={() => { setAddForm(EMPTY_PRODUCT_FORM); setAddError(''); }}
                   className="px-8 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-xl transition-all">Clear</button>
               </div>
             </div>
+            </CatalogueGate>
           </div>
         )}
 
@@ -2496,7 +2552,7 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
 };
 
 // --- ABOUT SECTION ---
-const AboutUsSection = () => (
+const AboutUsSection = ({ productCount }) => (
   <section className="bg-white py-16 px-4 border-t border-gray-100">
     <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
       <div className="space-y-6">
@@ -2518,7 +2574,7 @@ const AboutUsSection = () => (
         </div>
       </div>
       <div className="aspect-video bg-gradient-to-br from-blue-600 to-teal-500 rounded-3xl flex flex-col items-center justify-center p-8 text-white shadow-2xl overflow-hidden relative">
-        <div className="text-5xl font-black mb-2 tracking-tighter">{initialProducts.length}</div>
+        <div className="text-5xl font-black mb-2 tracking-tighter">{productCount}</div>
         <div className="text-sm font-bold opacity-80 uppercase tracking-widest text-center">Products Reviewed Across 3 Categories</div>
         <div className="absolute -bottom-10 -right-10 opacity-10 rotate-12"><Wind size={250} /></div>
       </div>
@@ -2544,7 +2600,45 @@ export default function App() {
     typeof window === 'undefined' ? { path: '/', params: {} } : pathToRoute(window.location.pathname)
   );
   const [showSecurityGate, setShowSecurityGate] = useState(false);
-  const [products, setProducts] = useState(initialProducts);
+  // Admin changes to the catalogue (src/catalogue.js), merged over the
+  // built-in products. 'loading' until the one read completes; on 'error'
+  // visitors simply keep seeing the built-in catalogue.
+  const [catalogue, setCatalogue] = useState({ status: 'loading', overrides: {} });
+  const [catalogueReloadKey, setCatalogueReloadKey] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    fetchCatalogueOverrides()
+      .then((overrides) => { if (!cancelled) setCatalogue({ status: 'ready', overrides }); })
+      .catch((error) => {
+        if (import.meta.env.DEV) console.error('[catalogue] load failed:', error);
+        if (!cancelled) setCatalogue((prev) => ({ ...prev, status: 'error' }));
+      });
+    return () => { cancelled = true; };
+  }, [catalogueReloadKey]);
+  const { visible: products, admin: adminProducts } = useMemo(
+    () => buildCatalogue(catalogueProducts, catalogue.overrides),
+    [catalogue.overrides]
+  );
+  const retryCatalogue = () => {
+    setCatalogue((prev) => ({ ...prev, status: 'loading' }));
+    setCatalogueReloadKey((key) => key + 1);
+  };
+
+  // Dashboard actions. Each saves through src/catalogue.js; on success the
+  // saved map replaces local state, so every page — the dashboard included —
+  // shows the change at once. Failures reject with a message safe to display.
+  const runCatalogueAction = async (save) => {
+    const result = await save();
+    setCatalogue({ status: 'ready', overrides: result.products });
+    return result;
+  };
+  const catalogueActions = {
+    saveEdit: (id, record) => runCatalogueAction(() => saveEdit(id, record)),
+    addProduct: (record) => runCatalogueAction(() => addProduct(record)),
+    hideProduct: (id) => runCatalogueAction(() => hideProduct(id)),
+    restoreOriginal: (id) => runCatalogueAction(() => restoreOriginal(id)),
+    removeAddedProduct: (id) => runCatalogueAction(() => removeAddedProduct(id)),
+  };
   // The header navigation is hidden below the md breakpoint, so phones need
   // this menu — without it the only way around the site was the footer.
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -2640,7 +2734,7 @@ export default function App() {
     switch (route.path) {
       case '/': return <HomePage products={products} categories={initialCategories} navigate={navigate} />;
       case 'category': return <CategoryPage categoryId={route.params.id} categories={initialCategories} products={products} navigate={navigate} />;
-      case 'product': return <ProductReviewPage productId={route.params.id} products={products} navigate={navigate} />;
+      case 'product': return <ProductReviewPage productId={route.params.id} products={products} catalogueStatus={catalogue.status} navigate={navigate} />;
       case 'guides': return <GuidePage />;
       case 'reviews': return <ReviewsPage />;
       case 'contact': return <ContactPage />;
@@ -2669,7 +2763,7 @@ export default function App() {
             </div>
           );
         }
-        return <AdminDashboard products={products} setProducts={setProducts} onLogout={handleLogout} />;
+        return <AdminDashboard adminProducts={adminProducts} catalogueStatus={catalogue.status} onRetryCatalogue={retryCatalogue} catalogueActions={catalogueActions} onLogout={handleLogout} />;
       default:
         // A SPA cannot return HTTP 404 for an unknown URL — the server already
         // sent 200 with index.html. Marking it noindex is what stops Google
@@ -2727,7 +2821,7 @@ export default function App() {
         )}
       </header>
       <main className="flex-grow">{renderPage()}</main>
-      <AboutUsSection />
+      <AboutUsSection productCount={products.length} />
       <footer className="bg-slate-900 text-slate-400 py-12">
         <div className="max-w-7xl mx-auto px-4">
           {/* Five columns: the grid previously declared four, which pushed

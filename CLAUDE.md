@@ -26,6 +26,7 @@ npm run check-images     # Product image rules; add `-- --network` to fetch ever
 npm run generate-brand-assets  # Rebuild favicon/icons/logo/og-default.jpg in public/ from the header logo
 npm run check-catalogue  # Rules for admin catalogue changes (src/catalogueMerge.js); no network
 npm run check-rules      # Probes the LIVE Firestore rules as a signed-out visitor; never writes
+npm run check-site       # Headless crawl of a served build (or BASE=https://coollivinguae.com): SEO, images, product states
 ```
 
 `prerender` needs the built site served on :4173 first (`npx vite preview --port 4173`).
@@ -79,6 +80,9 @@ SEO details that are easy to break:
 - The 404, admin, installation, and unknown product/category views pass `noIndex`. A SPA cannot
   return a real HTTP 404, so the noindex directive is the only thing preventing soft-404s in
   Search Console. `NotFoundMessage` in `App.jsx` is the shared body for not-found states.
+  A product id missing from the list while the catalogue read is in flight renders "Loading…"
+  without `noindex` — it may be an admin-added product — then "Product not found" (or "Product
+  unavailable" if the read failed), both `noindex`.
 
 ### Site URL
 
@@ -227,10 +231,10 @@ reject requests the form accepts.
 The only entry point is the `©` character in the site footer (`src/App.jsx`, styled
 `cursor-default` so it does not look clickable). It opens the sign-in modal.
 
-The dashboard's product editor changes React state only — there is no product database, the
-catalogue is `src/data/products.js`. Edits vanish on reload and visitors never see them; the UI
-says so (`SessionOnlyNotice`). Making them persist would need a Firestore collection, rules and
-a deploy, which has not been built.
+The dashboard's product editor saves to `catalogue/overrides` (see "Catalogue overrides"), and
+changes are live immediately. The product tabs stay locked until the overrides have loaded: a form
+opened earlier would show original values, and saving it would discard earlier changes. Delete
+hides a built-in product (Restore original brings it back) and permanently removes an added one.
 
 ## Deployment state — important context
 
