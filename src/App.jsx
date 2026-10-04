@@ -14,6 +14,7 @@ import { products as catalogueProducts, formatPriceBand, priceBandMidpoint } fro
 import { uaeACDatabase } from './data/calculatorAcs';
 import AffiliateLink from './components/AffiliateLink';
 import AffiliateDisclosure from './components/AffiliateDisclosure';
+import ProductImage from './components/ProductImage';
 import { submitReview, fetchApprovedReviews, EMIRATES, LIMITS, REVIEWS_COLLECTION } from './reviews';
 import { pathToRoute, routeToPath } from './routes';
 import { initAnalytics, setAnalyticsConsent, trackPageView } from './analytics';
@@ -164,19 +165,17 @@ const Breadcrumbs = ({ items, navigate }) => (
 
 // --- COMPONENTS ---
 const ProductCard = ({ product, navigate }) => {
-  const [imgError, setImgError] = useState(false);
   return (
     <article onClick={() => navigate('product', { id: product.id })}
       className="bg-white rounded-xl shadow-sm hover:shadow-2xl transition-all duration-300 border border-gray-100 overflow-hidden flex flex-col group cursor-pointer hover:-translate-y-1">
-      <div className="h-48 overflow-hidden relative bg-slate-100">
-        {!imgError
-          ? <img src={product.image} alt={`${product.brand} ${product.title}`}
-              onError={() => setImgError(true)}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-          : <img src={`https://m.media-amazon.com/images/I/715rBETRD9L._SL1500_.jpg`}
-              alt={product.title}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-        }
+      <div className="h-48 overflow-hidden relative">
+        <ProductImage
+          src={product.image}
+          alt={`${product.brand} ${product.title}`}
+          brand={product.brand}
+          category={product.category}
+          className="w-full h-full p-3 group-hover:scale-105 transition-transform duration-500"
+        />
         <div
           className="absolute top-2 right-2 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow flex items-center gap-1"
           title="CoolLivingUAE editorial score — our own assessment, not a user rating"
@@ -729,7 +728,15 @@ const ProductReviewPage = ({ productId, products, navigate }) => {
           <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden mb-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-10 p-10">
               <div className="relative">
-                <img src={product.image} alt={product.title} className="w-full rounded-2xl shadow-lg border border-gray-100 object-cover aspect-square" />
+                <ProductImage
+                  src={product.image}
+                  alt={product.title}
+                  brand={product.brand}
+                  category={product.category}
+                  priority
+                  className="w-full aspect-square rounded-2xl shadow-lg border border-gray-100 p-6"
+                  caption={`Representative ${product.brand} photo — the exact model and capacity may differ. Check the retailer listing before you buy.`}
+                />
                 <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm p-3 rounded-xl shadow-sm border border-gray-100">
                    <div className="text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Editorial Score</div>
                    <div className="text-2xl font-black text-blue-600 flex items-center gap-1">{product.editorialScore} <Star size={20} fill="currentColor" /></div>
@@ -1358,7 +1365,7 @@ const ACCalculatorPage = ({ navigate }) => {
                     {cheapestAmazon && (
                       <div className="border-2 border-orange-200 rounded-2xl p-5 bg-orange-50 relative overflow-hidden">
                         <div className="absolute top-3 right-3 bg-orange-500 text-white text-[9px] font-black px-2 py-1 rounded-full uppercase tracking-widest">Lowest band</div>
-                        <img src={cheapestAmazon.img} alt={cheapestAmazon.model} className="w-full h-32 object-cover rounded-xl mb-4 border border-orange-100" onError={e => { e.target.style.display='none'; }} />
+                        <ProductImage src={cheapestAmazon.img} alt={cheapestAmazon.model} brand={cheapestAmazon.brand} category="smart-acs" className="w-full h-32 rounded-xl mb-4 border border-orange-100 p-2" />
                         <div className="text-[10px] text-orange-600 font-bold uppercase tracking-widest mb-1">{cheapestAmazon.brand}</div>
                         <div className="font-bold text-slate-900 text-sm mb-1 line-clamp-2">{cheapestAmazon.model}</div>
                         <div className="text-xl font-black text-slate-900 mb-4">{formatPriceBand(cheapestAmazon.priceBand)}<span className="block text-[10px] font-medium text-slate-400">indicative range</span></div>
@@ -1371,7 +1378,7 @@ const ACCalculatorPage = ({ navigate }) => {
                     {cheapestNoon && (
                       <div className="border-2 border-yellow-200 rounded-2xl p-5 bg-yellow-50 relative overflow-hidden">
                         <div className="absolute top-3 right-3 bg-yellow-500 text-white text-[9px] font-black px-2 py-1 rounded-full uppercase tracking-widest">Lowest band</div>
-                        <img src={cheapestNoon.img} alt={cheapestNoon.model} className="w-full h-32 object-cover rounded-xl mb-4 border border-yellow-100" onError={e => { e.target.style.display='none'; }} />
+                        <ProductImage src={cheapestNoon.img} alt={cheapestNoon.model} brand={cheapestNoon.brand} category="smart-acs" className="w-full h-32 rounded-xl mb-4 border border-yellow-100 p-2" />
                         <div className="text-[10px] text-yellow-700 font-bold uppercase tracking-widest mb-1">{cheapestNoon.brand}</div>
                         <div className="font-bold text-slate-900 text-sm mb-1 line-clamp-2">{cheapestNoon.model}</div>
                         <div className="text-xl font-black text-slate-900 mb-4">{formatPriceBand(cheapestNoon.priceBand)}<span className="block text-[10px] font-medium text-slate-400">indicative range</span></div>
@@ -1389,7 +1396,7 @@ const ACCalculatorPage = ({ navigate }) => {
                     {matchedACs.map((ac, i) => (
                       <div key={ac.id} className="flex items-center gap-4 bg-gray-50 rounded-2xl p-4 border border-gray-100 hover:border-blue-200 transition-all">
                         <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-black text-xs flex-shrink-0">#{i+1}</div>
-                        <img src={ac.img} alt={ac.brand} className="w-14 h-14 object-cover rounded-xl border border-gray-200 flex-shrink-0" onError={e => { e.target.style.display='none'; }} />
+                        <ProductImage src={ac.img} alt={ac.model} brand={ac.brand} category="smart-acs" compact className="w-14 h-14 rounded-xl border border-gray-200 flex-shrink-0 p-1" />
                         <div className="flex-grow min-w-0">
                           <div className="text-[10px] text-blue-500 font-bold uppercase tracking-widest">{ac.brand}</div>
                           <div className="font-bold text-slate-900 text-sm truncate">{ac.model}</div>
@@ -2158,8 +2165,7 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                     <tr key={p.id} className={`border-b last:border-0 hover:bg-blue-50/30 transition-colors ${i % 2 === 0 ? '' : 'bg-slate-50/40'}`}>
                       <td className="p-5">
                         <div className="flex items-center gap-3">
-                          <img src={p.image} alt={p.brand} className="w-12 h-12 object-cover rounded-xl border border-slate-100 flex-shrink-0 bg-slate-50"
-                            onError={e => { e.target.src = 'https://via.placeholder.com/48x48?text=AC'; }} />
+                          <ProductImage src={p.image} alt={p.title} brand={p.brand} category={p.category} compact className="w-12 h-12 rounded-xl border border-slate-100 flex-shrink-0 p-1" />
                           <div className="min-w-0">
                             <div className="font-bold text-slate-900 text-sm truncate max-w-[180px] md:max-w-xs">{p.title}</div>
                             <div className="text-xs text-blue-500 font-bold">{p.brand}</div>

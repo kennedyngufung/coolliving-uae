@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "prerender": "node scripts/prerender.mjs",
-    "generate-sitemap": "node scripts/generate-sitemap.mjs"
+    "generate-sitemap": "node scripts/generate-sitemap.mjs",
+    "check-images": "node scripts/check-images.mjs"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.2.1",

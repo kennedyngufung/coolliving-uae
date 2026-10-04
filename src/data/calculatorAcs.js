@@ -9,25 +9,31 @@
  *     URLs are built at render time by src/affiliate.js.
  *   - priceBand is an indicative AED range, never a live price.
  *
- * Images are brand-consistent stills. The previous set hotlinked several
- * unrelated retail sites, and in a few cases showed a different brand or
- * capacity than the row it illustrated.
+ * Images follow the same rule as src/data/products.js: a photo of that
+ * brand's wall-mounted split unit, or '' when none has been verified (the
+ * page then shows a neutral tile). The previous set pointed Midea rows at a
+ * Sharp unit, Panasonic rows at a vacuum cleaner, and five brands at URLs
+ * that no longer resolved. Run `npm run check-images` after any change.
  * ---------------------------------------------------------------------------
  */
 
 const IMAGES = {
-  midea: 'https://m.media-amazon.com/images/I/61joTSyLZbL._SL1000_.jpg',
-  superGeneral: 'https://m.media-amazon.com/images/I/61RM3uiBYiL._AC_SL1500_.jpg',
-  gree: 'https://m.media-amazon.com/images/I/71B3h9YNUBL._AC_SL1500_.jpg',
+  midea: '',
+  superGeneral: '',
+  gree: '',
   tcl: 'https://aws-obg-image-lb-3.tcl.com/content/dam/brandsite/global/product/ac/elite/xa73/ksp/1920-1080-TCL-Elite-Series-Inverter-Air-Conditioner.png',
-  hisense: 'https://m.media-amazon.com/images/I/71hkWvANsxL._AC_SL1500_.jpg',
-  samsung: 'https://m.media-amazon.com/images/I/71DozWpxpBL._AC_SL1500_.jpg',
-  lg: 'https://m.media-amazon.com/images/I/61BfHFNMEQL._AC_SL1500_.jpg',
-  oGeneral: 'https://m.media-amazon.com/images/I/51Z3U+0VjCL._AC_SL1000_.jpg',
-  panasonic: 'https://m.media-amazon.com/images/I/71s40QoAJbL._AC_UL640_QL65_.jpg',
+  hisense: '',
+  samsung: '/images/products/samsung-split-ac.jpg',
+  lg: '/images/products/lg-dual-inverter-split-ac.jpg',
+  oGeneral: '/images/products/o-general-split-ac.jpg',
+  panasonic: '',
   daikin: 'https://m.media-amazon.com/images/I/61HuUBy7XIL._AC_.jpg',
   carrier: 'https://m.media-amazon.com/images/I/512J3gqzLuL._AC_.jpg',
 };
+
+// The brand photos above show wall-mounted splits. Central and cassette units
+// look nothing like them, so those rows deliberately have no photo.
+const NO_PHOTO = '';
 
 export const uaeACDatabase = [
   // 1 TON (12,000 BTU) — rooms up to ~14 m²
@@ -157,13 +163,13 @@ export const uaeACDatabase = [
   // 4 TON (48,000 BTU) — 55 m² and above
   {
     id: 'calc-ac-20', brand: 'Carrier', model: 'Carrier 4 Ton T3 Central / Cassette AC',
-    tons: 4, btu: 48000, priceBand: { min: 4290, max: 5450 }, img: IMAGES.carrier,
+    tons: 4, btu: 48000, priceBand: { min: 4290, max: 5450 }, img: NO_PHOTO,
     amazonQuery: 'Carrier 4 ton central AC UAE',
     noonQuery: 'Carrier 4 ton central AC',
   },
   {
     id: 'calc-ac-21', brand: 'O-General', model: 'O-General 4 Ton T3 Cassette AC',
-    tons: 4, btu: 48000, priceBand: { min: 4730, max: 6020 }, img: IMAGES.oGeneral,
+    tons: 4, btu: 48000, priceBand: { min: 4730, max: 6020 }, img: NO_PHOTO,
     amazonQuery: 'O General 4 ton cassette AC UAE',
     noonQuery: 'O General 4 ton cassette AC',
   },
