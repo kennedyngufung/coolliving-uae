@@ -38,8 +38,8 @@ is done through `npm run build`, `npm run lint`, and targeted Node scripts.
 
 ### Lint baseline
 
-`npm run lint` reports **11 pre-existing errors** and does not exit clean. This is the accepted
-baseline — do not claim lint "passes". Before finishing work, compare the count against 11 and
+`npm run lint` reports **9 pre-existing errors** and does not exit clean. This is the accepted
+baseline — do not claim lint "passes". Before finishing work, compare the count against 9 and
 make sure the number has not grown. Most are unused-variable and empty-block warnings in
 `src/App.jsx` and `components/BTUCalculator.jsx`. Destructuring a component as `icon: Icon` in
 function parameters trips `no-unused-vars` here; assign it to a capitalised `const` instead.
