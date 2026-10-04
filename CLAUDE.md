@@ -219,8 +219,9 @@ Auth state is tracked as three values — `checking` / `in` / `out` — because
 `onAuthStateChanged` fires asynchronously. Collapsing it to a boolean renders a blank admin page
 in the window between a successful sign-in and the listener firing.
 
-Firestore list queries must stay bounded. `fetchApprovedReviews()` caps at 50. The admin leads
-query is still unbounded (known issue).
+Firestore list queries must stay bounded. `fetchApprovedReviews()` caps at 50, and the dashboard
+loads the 200 most recent leads when it opens. Leads can be deleted from the dashboard — the
+privacy policy promises deletion on request.
 
 The installation form validates against the same limits `firestore.rules` enforces (name 2–80
 characters, phone 6–25) via `LEAD_LIMITS` in `App.jsx`. Change both together, or the rules

@@ -1799,11 +1799,17 @@ const ProductNotice = ({ notice, onDismiss }) => {
   );
 };
 
+/** Leads shown in the dashboard: the most recent this many. */
+const LEADS_LIMIT = 200;
+
 const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, catalogueActions, onLogout }) => {
   const [tab, setTab]               = useState('overview');
-  const [leads, setLeads]           = useState([]);
-  const [leadsLoading, setLeadsLoading] = useState(false);
+  // null = not loaded yet; an array = loaded (possibly empty).
+  const [leads, setLeads]           = useState(null);
   const [leadsError, setLeadsError] = useState('');
+  const [leadsReloadKey, setLeadsReloadKey] = useState(0);
+  const leadsLoading = leads === null;
+  const leadList = leads || [];
   const [editingProduct, setEditingProduct] = useState(null);
   const [formState, setFormState]   = useState(null);
   const [editError, setEditError]   = useState('');
@@ -1824,26 +1830,54 @@ const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, cata
   const reviewsLoading = pendingReviews === null;
 
   // ── Fetch leads from Firebase ──────────────────────────────────────────
+  // Loaded when the dashboard opens, not when the Leads tab is first opened:
+  // the Overview's counts and the tab badge read this list, and previously
+  // showed 0 new leads until the tab had been visited. Bounded to the most
+  // recent LEADS_LIMIT.
   useEffect(() => {
-    if (tab !== 'leads') return;
-    setLeadsLoading(true);
-    setLeadsError('');
-    const q = query(collection(db, 'installationRequests'), orderBy('createdAt', 'desc'));
-    getDocs(q)
-      .then(snap => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setLeads(data);
-      })
-      .catch(() => setLeadsError('Could not load leads — check Firebase rules.'))
-      .finally(() => setLeadsLoading(false));
-  }, [tab]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDocs(query(collection(db, 'installationRequests'), orderBy('createdAt', 'desc'), fsLimit(LEADS_LIMIT)));
+        if (cancelled) return;
+        setLeads(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setLeadsError('');
+      } catch {
+        if (cancelled) return;
+        setLeads([]);
+        setLeadsError('Could not load leads. Check your connection and press Refresh.');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [leadsReloadKey]);
+
+  const reloadLeads = () => { setLeads(null); setLeadsReloadKey(k => k + 1); };
 
   const markLeadStatus = async (leadId, status) => {
     setSavingLead(leadId);
     try {
       await updateDoc(doc(db, 'installationRequests', leadId), { status, updatedAt: serverTimestamp() });
-      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, status } : l));
-    } catch { /* silent */ }
+      setLeads(prev => (prev || []).map(l => l.id === leadId ? { ...l, status } : l));
+      setLeadsError('');
+    } catch {
+      setLeadsError('Could not update that lead. Please try again.');
+    }
+    setSavingLead('');
+  };
+
+  // Deletes the customer's name and phone number for good. The privacy policy
+  // promises deletion on request, and old leads should not be kept forever.
+  const deleteLead = async (lead) => {
+    const who = lead.name ? `the request from ${lead.name}` : 'this request';
+    if (!window.confirm(`Permanently delete ${who}? Their name and phone number are removed, and this cannot be undone.`)) return;
+    setSavingLead(lead.id);
+    try {
+      await deleteDoc(doc(db, 'installationRequests', lead.id));
+      setLeads(prev => (prev || []).filter(l => l.id !== lead.id));
+      setLeadsError('');
+    } catch {
+      setLeadsError('Could not delete that lead. Please try again.');
+    }
     setSavingLead('');
   };
 
@@ -1981,8 +2015,8 @@ const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, cata
     const matchSearch = !search || p.title.toLowerCase().includes(search.toLowerCase()) || p.brand?.toLowerCase().includes(search.toLowerCase());
     return matchCat && matchSearch;
   });
-  const newLeads    = leads.filter(l => !l.status || l.status === 'new');
-  const doneLeads   = leads.filter(l => l.status === 'done');
+  const newLeads    = leadList.filter(l => !l.status || l.status === 'new');
+  const doneLeads   = leadList.filter(l => l.status === 'done');
   const acCount     = liveProducts.filter(p => p.category === 'smart-acs').length;
   const purCount    = liveProducts.filter(p => p.category === 'air-purifiers').length;
   const thermoCount = liveProducts.filter(p => p.category === 'smart-thermostats').length;
@@ -2051,7 +2085,7 @@ const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, cata
                 { label: 'Total Products',    value: liveProducts.length,  icon: LayoutList, color: 'bg-blue-50 text-blue-600',   border: 'border-blue-100' },
                 { label: 'New Leads',         value: newLeads.length,  icon: Mail,       color: 'bg-orange-50 text-orange-500', border: 'border-orange-100' },
                 { label: 'Leads Closed',      value: doneLeads.length, icon: CheckCircle,color: 'bg-green-50 text-green-600',  border: 'border-green-100' },
-                { label: 'Total Leads',       value: leads.length,     icon: BarChart,   color: 'bg-teal-50 text-teal-600',   border: 'border-teal-100' },
+                { label: 'Total Leads',       value: leadList.length,     icon: BarChart,   color: 'bg-teal-50 text-teal-600',   border: 'border-teal-100' },
               ].map(({ label, value, icon: Icon, color, border }) => (
                 <div key={label} className={`bg-white rounded-2xl p-5 border ${border} shadow-sm`}>
                   <div className={`${color} w-10 h-10 rounded-xl flex items-center justify-center mb-3`}><Icon size={20} /></div>
@@ -2103,14 +2137,14 @@ const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, cata
             </div>
 
             {/* Recent Leads Preview */}
-            {leads.length > 0 && (
+            {leadList.length > 0 && (
               <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-black text-slate-900 flex items-center gap-2"><Mail size={18} className="text-blue-600" /> Recent Leads</h3>
                   <button onClick={() => setTab('leads')} className="text-blue-600 text-xs font-bold hover:underline">View All</button>
                 </div>
                 <div className="space-y-3">
-                  {leads.slice(0, 4).map(lead => (
+                  {leadList.slice(0, 4).map(lead => (
                     <div key={lead.id} className="flex items-center justify-between bg-slate-50 rounded-xl p-4 border border-slate-100">
                       <div>
                         <div className="font-bold text-slate-900 text-sm">{lead.name || 'Anonymous'}</div>
@@ -2137,7 +2171,10 @@ const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, cata
                 <h2 className="text-2xl font-black text-slate-900">Installation Leads</h2>
                 <p className="text-slate-400 text-sm mt-0.5">Requests submitted via the installation form</p>
               </div>
-              <div className="flex gap-3">
+              <div className="flex gap-3 items-center">
+                <button onClick={reloadLeads} disabled={leadsLoading} className="bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-600 font-bold px-4 py-2 rounded-full text-xs transition-all">
+                  {leadsLoading ? 'Refreshing…' : 'Refresh'}
+                </button>
                 <div className="bg-orange-100 text-orange-700 text-xs font-black px-4 py-2 rounded-full">{newLeads.length} New</div>
                 <div className="bg-green-100 text-green-700 text-xs font-black px-4 py-2 rounded-full">{doneLeads.length} Closed</div>
               </div>
@@ -2154,7 +2191,11 @@ const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, cata
               <div className="bg-red-50 border border-red-100 rounded-2xl p-6 text-red-700 font-bold text-sm">{leadsError}</div>
             )}
 
-            {!leadsLoading && !leadsError && leads.length === 0 && (
+            {!leadsLoading && leadList.length >= LEADS_LIMIT && (
+              <p className="text-xs text-slate-400 font-bold">Showing the {LEADS_LIMIT} most recent leads.</p>
+            )}
+
+            {!leadsLoading && !leadsError && leadList.length === 0 && (
               <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-16 text-center">
                 <Mail size={40} className="text-slate-300 mx-auto mb-4" />
                 <h3 className="font-bold text-slate-600 mb-1">No leads yet</h3>
@@ -2162,7 +2203,7 @@ const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, cata
               </div>
             )}
 
-            {!leadsLoading && leads.map(lead => (
+            {!leadsLoading && leadList.map(lead => (
               <div key={lead.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${!lead.status || lead.status === 'new' ? 'border-orange-200' : lead.status === 'contacted' ? 'border-blue-200' : 'border-green-200'}`}>
                 <div className="p-6">
                   <div className="flex items-start justify-between gap-4 mb-4">
@@ -2201,7 +2242,7 @@ const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, cata
                     </div>
                   )}
 
-                  <div className="flex gap-2 pt-2">
+                  <div className="flex flex-wrap gap-2 pt-2">
                     <button onClick={() => markLeadStatus(lead.id, 'new')} disabled={savingLead === lead.id}
                       className={`flex-1 py-2.5 rounded-xl text-xs font-black border transition-all ${!lead.status || lead.status === 'new' ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-orange-500 border-orange-200 hover:bg-orange-50'}`}>
                       New
@@ -2224,6 +2265,10 @@ const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, cata
                         Call
                       </a>
                     )}
+                    <button onClick={() => deleteLead(lead)} disabled={savingLead === lead.id}
+                      className="px-4 py-2.5 rounded-xl text-xs font-black border border-red-200 bg-white text-red-600 hover:bg-red-50 disabled:opacity-50 transition-all flex items-center gap-1">
+                      <Trash2 size={13} /> Delete
+                    </button>
                   </div>
                 </div>
               </div>
