@@ -1752,6 +1752,23 @@ const AdminSecurityGate = ({ onVerify, onCancel }) => {
   );
 };
 
+/**
+ * Product edits in the dashboard live only in React state. The catalogue has
+ * no database behind it — it is src/data/products.js, built into the site —
+ * so a change made here disappears on reload and is never seen by visitors.
+ * The buttons previously said "Publish" and "It's now live on the site".
+ */
+const SessionOnlyNotice = () => (
+  <div role="note" className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 text-amber-900 text-sm">
+    <HelpCircle size={18} className="text-amber-500 flex-shrink-0 mt-0.5" />
+    <p>
+      <strong>Preview only — changes here are not saved.</strong> They last until you reload this
+      page and are never shown to visitors. To change the live catalogue, edit{' '}
+      <code className="font-mono text-xs">src/data/products.js</code> and redeploy.
+    </p>
+  </div>
+);
+
 const AdminDashboard = ({ products, setProducts, onLogout }) => {
   const [tab, setTab]               = useState('overview');
   const [leads, setLeads]           = useState([]);
@@ -1876,7 +1893,7 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
     setEditingProduct(null);
     setFormState(null);
   };
-  const handleDelete = (id) => { if (window.confirm('Remove this product from the site?')) setProducts(products.filter(p => p.id !== id)); };
+  const handleDelete = (id) => { if (window.confirm('Hide this product for the rest of this session? The live site is not changed.')) setProducts(products.filter(p => p.id !== id)); };
   const handleAdd   = () => {
     setAddError('');
     const min = Number(addForm.priceMin);
@@ -2032,11 +2049,11 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
                 </button>
                 <button onClick={() => setTab('add')} className="flex items-center gap-3 bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-2xl p-4 transition-all text-left">
                   <Plus size={20} className="text-blue-600 flex-shrink-0" />
-                  <div><div className="font-bold text-slate-900 text-sm">Add Product</div><div className="text-xs text-slate-400">Publish a new review</div></div>
+                  <div><div className="font-bold text-slate-900 text-sm">Add Product</div><div className="text-xs text-slate-400">Preview a new listing (not saved)</div></div>
                 </button>
                 <button onClick={() => setTab('products')} className="flex items-center gap-3 bg-teal-50 hover:bg-teal-100 border border-teal-100 rounded-2xl p-4 transition-all text-left">
                   <Edit size={20} className="text-teal-600 flex-shrink-0" />
-                  <div><div className="font-bold text-slate-900 text-sm">Manage Products</div><div className="text-xs text-slate-400">Edit or remove listings</div></div>
+                  <div><div className="font-bold text-slate-900 text-sm">Manage Products</div><div className="text-xs text-slate-400">Preview edits (not saved)</div></div>
                 </button>
               </div>
             </div>
@@ -2185,6 +2202,8 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
               </button>
             </div>
 
+            <SessionOnlyNotice />
+
             {/* Filters */}
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-grow">
@@ -2261,6 +2280,7 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
             <button onClick={() => setEditingProduct(null)} className="flex items-center gap-2 text-slate-500 font-bold hover:text-blue-600 transition-colors text-sm">
               <ArrowLeft size={16} /> Back to Products
             </button>
+            <SessionOnlyNotice />
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
               <h2 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2"><Edit size={20} className="text-blue-600" /> Edit Product</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -2314,7 +2334,7 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
               </div>
               <div className="flex gap-3 mt-6">
                 <button onClick={handleSave} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm">
-                  <Save size={16} /> Save Changes
+                  <Save size={16} /> Apply to Preview
                 </button>
                 <button onClick={() => setEditingProduct(null)} className="px-8 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-xl transition-all">Cancel</button>
               </div>
@@ -2329,12 +2349,14 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
           <div className="animate-in fade-in space-y-6">
             <div>
               <h2 className="text-2xl font-black text-slate-900">Add New Product</h2>
-              <p className="text-slate-400 text-sm mt-0.5">Publish a new review to the site instantly</p>
+              <p className="text-slate-400 text-sm mt-0.5">Preview a new listing in this browser session</p>
             </div>
+
+            <SessionOnlyNotice />
 
             {addSuccess && (
               <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex items-center gap-3 text-green-800 font-bold text-sm">
-                <CheckCircle size={20} className="text-green-500 flex-shrink-0" /> Product added successfully! It's now live on the site.
+                <CheckCircle size={20} className="text-green-500 flex-shrink-0" /> Added to this session's preview. Reloading the page removes it; the live site is unchanged.
               </div>
             )}
 
@@ -2394,7 +2416,7 @@ const AdminDashboard = ({ products, setProducts, onLogout }) => {
               <div className="flex gap-3 mt-6">
                 <button onClick={handleAdd} disabled={!addForm.title || !addForm.priceMin || !addForm.priceMax}
                   className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm">
-                  <Plus size={16} /> Publish Product
+                  <Plus size={16} /> Add to Preview
                 </button>
                 <button onClick={() => { setAddForm(EMPTY_PRODUCT_FORM); setAddError(''); }}
                   className="px-8 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-xl transition-all">Clear</button>
