@@ -7,7 +7,8 @@
  *
  * One read per page load keeps the site inside Firestore's free quota (50,000
  * reads a day). Writes run in a transaction — read, change one entry, write —
- * so two open dashboard tabs cannot overwrite each other's saves.
+ * so two open dashboard tabs cannot overwrite each other's saves, and an edit
+ * whose product was saved elsewhere after its form opened is refused.
  * firestore.rules lets anyone read the document and only an allowlisted
  * admin write it.
  * ---------------------------------------------------------------------------
@@ -54,8 +55,12 @@ async function commit(change) {
   }
 }
 
-export const saveEdit = (id, record) =>
-  commit((current) => ({ products: applyEdit(current, builtInsById, id, record) }));
+/**
+ * `openedEntry` is the entry catalogue/overrides held for this product when
+ * the edit form opened; the save is refused if it has changed since.
+ */
+export const saveEdit = (id, record, openedEntry) =>
+  commit((current) => ({ products: applyEdit(current, builtInsById, id, record, openedEntry) }));
 
 export const addProduct = (record) =>
   commit((current) => applyAdd(current, builtInsById, record));

@@ -263,16 +263,38 @@ export function validateProductForm(form) {
 }
 
 const NO_LONGER_EXISTS = 'That product no longer exists. Reload the dashboard and try again.';
+const CHANGED_ELSEWHERE = 'This product was changed on another device or tab after you opened it, so your edit was not saved. Reload the page, open the product again and redo your change.';
 const cleanBuiltInEntry = (products, id) => sanitizeEntry(products[id], { isBuiltIn: true }) || {};
+
+/**
+ * True when two stored entries hold the same editable values, compared as
+ * visitors see them: an invalid entry counts as no changes. The hidden flag
+ * is not an editable field, so hiding or restoring alone never differs.
+ */
+function sameEditableValues(a, b) {
+  const x = sanitizeEntry(a, { isBuiltIn: true }) || {};
+  const y = sanitizeEntry(b, { isBuiltIn: true }) || {};
+  return EDITABLE_FIELDS.every((field) => (field === 'priceBand'
+    ? x.priceBand?.min === y.priceBand?.min && x.priceBand?.max === y.priceBand?.max
+    : x[field] === y[field]));
+}
 
 /**
  * Saves an edited record. A built-in keeps only its differences — none at all
  * removes the entry — and keeps any hidden flag already stored, which may
  * have been set from another tab since this one loaded.
+ *
+ * `openedEntry` is the entry that was stored for this product when the edit
+ * form opened (undefined when there was none). The form holds every field,
+ * so if another device or tab saved this product since, saving the form
+ * would silently put back the old values — the edit is refused instead.
  */
-export function applyEdit(products, builtInsById, id, record) {
+export function applyEdit(products, builtInsById, id, record, openedEntry) {
   const next = { ...products };
   const base = builtInsById.get(id);
+  const existing = products[id];
+  if (!base && !isPlainObject(existing)) throw new CatalogueError(NO_LONGER_EXISTS);
+  if (!sameEditableValues(existing, openedEntry)) throw new CatalogueError(CHANGED_ELSEWHERE);
   if (base) {
     const hidden = cleanBuiltInEntry(products, id).hidden === true;
     const changes = diffAgainstBuiltIn(base, record);
@@ -280,8 +302,6 @@ export function applyEdit(products, builtInsById, id, record) {
     else next[id] = { ...changes, ...(hidden ? { hidden: true } : {}) };
     return next;
   }
-  const existing = products[id];
-  if (!isPlainObject(existing)) throw new CatalogueError(NO_LONGER_EXISTS);
   next[id] = { ...record, addedAt: existing.addedAt };
   return next;
 }

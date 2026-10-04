@@ -179,25 +179,56 @@ check('validateProductForm names the problem for common mistakes', () => {
 });
 
 check('applyEdit stores only differences for a built-in and clears an unchanged edit', () => {
-  let map = applyEdit({}, builtInsById, 'ac-1', { ...ac1, image: 'https://example.com/a.jpg' });
+  let map = applyEdit({}, builtInsById, 'ac-1', { ...ac1, image: 'https://example.com/a.jpg' }, undefined);
   assert.deepEqual(map, { 'ac-1': { image: 'https://example.com/a.jpg' } });
-  map = applyEdit(map, builtInsById, 'ac-1', { ...ac1 });
+  map = applyEdit(map, builtInsById, 'ac-1', { ...ac1 }, map['ac-1']);
   assert.deepEqual(map, {});
 });
 
 check('applyEdit keeps a hidden flag set by another tab and never mutates its input', () => {
   const current = { 'ac-1': { hidden: true } };
-  const map = applyEdit(current, builtInsById, 'ac-1', { ...ac1, image: 'https://example.com/a.jpg' });
+  const map = applyEdit(current, builtInsById, 'ac-1', { ...ac1, image: 'https://example.com/a.jpg' }, undefined);
   assert.deepEqual(map['ac-1'], { image: 'https://example.com/a.jpg', hidden: true });
-  assert.deepEqual(applyEdit(map, builtInsById, 'ac-1', { ...ac1 })['ac-1'], { hidden: true });
+  assert.deepEqual(applyEdit(map, builtInsById, 'ac-1', { ...ac1 }, map['ac-1'])['ac-1'], { hidden: true });
   assert.deepEqual(current, { 'ac-1': { hidden: true } });
 });
 
 check('applyEdit replaces an added product, keeps addedAt, and rejects unknown ids', () => {
-  const map = applyEdit({ 'lg-artcool-aaaa': VALID_NEW }, builtInsById, 'lg-artcool-aaaa', { ...VALID_NEW, addedAt: undefined, title: 'LG ArtCool Renamed' });
+  const map = applyEdit({ 'lg-artcool-aaaa': VALID_NEW }, builtInsById, 'lg-artcool-aaaa', { ...VALID_NEW, addedAt: undefined, title: 'LG ArtCool Renamed' }, VALID_NEW);
   assert.equal(map['lg-artcool-aaaa'].title, 'LG ArtCool Renamed');
   assert.equal(map['lg-artcool-aaaa'].addedAt, 1000);
-  assert.throws(() => applyEdit({}, builtInsById, 'gone-aaaa', VALID_NEW), CatalogueError);
+  assert.throws(() => applyEdit({}, builtInsById, 'gone-aaaa', VALID_NEW, VALID_NEW), /no longer exists/);
+});
+
+check('applyEdit refuses an edit when another device changed the product after the form opened', () => {
+  // A laptop opened the form while nothing was stored for ac-4; a phone then saved a photo.
+  const current = { 'ac-4': { image: 'https://example.com/phone.jpg' } };
+  const laptopEdit = { ...builtInsById.get('ac-4'), description: 'x'.repeat(50) };
+  assert.throws(
+    () => applyEdit(current, builtInsById, 'ac-4', laptopEdit, null),
+    (error) => error instanceof CatalogueError && /changed on another device/.test(error.message),
+  );
+  assert.deepEqual(current, { 'ac-4': { image: 'https://example.com/phone.jpg' } });
+});
+
+check('applyEdit accepts an edit when the stored entry is unchanged since the form opened', () => {
+  const stored = { 'ac-4': { image: 'https://example.com/phone.jpg' } };
+  const edited = { ...builtInsById.get('ac-4'), image: 'https://example.com/phone.jpg', description: 'y'.repeat(50) };
+  const map = applyEdit(stored, builtInsById, 'ac-4', edited, stored['ac-4']);
+  assert.deepEqual(map['ac-4'], { image: 'https://example.com/phone.jpg', description: 'y'.repeat(50) });
+});
+
+check('a hide from another device is not treated as a conflicting edit', () => {
+  const map = applyEdit({ 'ac-1': { hidden: true } }, builtInsById, 'ac-1', { ...ac1, image: 'https://example.com/a.jpg' }, null);
+  assert.deepEqual(map['ac-1'], { image: 'https://example.com/a.jpg', hidden: true });
+});
+
+check('applyEdit refuses a stale edit to an added product', () => {
+  const current = { 'lg-artcool-aaaa': { ...VALID_NEW, image: 'https://example.com/changed.jpg' } };
+  assert.throws(
+    () => applyEdit(current, builtInsById, 'lg-artcool-aaaa', { ...VALID_NEW, title: 'Renamed on the laptop' }, VALID_NEW),
+    CatalogueError,
+  );
 });
 
 check('applyAdd picks a free id and stamps addedAt', () => {

@@ -1802,7 +1802,7 @@ const ProductNotice = ({ notice, onDismiss }) => {
 /** Leads shown in the dashboard: the most recent this many. */
 const LEADS_LIMIT = 200;
 
-const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, catalogueActions, onLogout }) => {
+const AdminDashboard = ({ adminProducts, catalogueOverrides, catalogueStatus, onRetryCatalogue, catalogueActions, onLogout }) => {
   const [tab, setTab]               = useState('overview');
   // null = not loaded yet; an array = loaded (possibly empty).
   const [leads, setLeads]           = useState(null);
@@ -1812,6 +1812,10 @@ const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, cata
   const leadList = leads || [];
   const [editingProduct, setEditingProduct] = useState(null);
   const [formState, setFormState]   = useState(null);
+  // What catalogue/overrides held for the product when its form opened
+  // (undefined: nothing). The save is refused if another device or tab has
+  // changed it since, rather than putting the form's older values back.
+  const [editOpenedEntry, setEditOpenedEntry] = useState(undefined);
   const [editError, setEditError]   = useState('');
   const [addForm, setAddForm]       = useState(EMPTY_PRODUCT_FORM);
   const [addError, setAddError]     = useState('');
@@ -1943,6 +1947,7 @@ const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, cata
   // component when it meets one.
   const startEdit = (p) => {
     setEditingProduct(p.id);
+    setEditOpenedEntry(catalogueOverrides[p.id]);
     setEditError('');
     // Flatten the price band so it maps onto two numeric form inputs.
     setFormState({ ...p, priceMin: p.priceBand?.min ?? '', priceMax: p.priceBand?.max ?? '', tons: p.tons ?? '' });
@@ -1955,7 +1960,7 @@ const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, cata
     setEditError('');
     setBusyProduct(editingProduct);
     try {
-      await catalogueActions.saveEdit(editingProduct, record);
+      await catalogueActions.saveEdit(editingProduct, record, editOpenedEntry);
       setProductNotice({ tone: 'success', text: `Saved “${record.title}”. It is live on the site now.` });
       setEditingProduct(null);
       setFormState(null);
@@ -2514,7 +2519,11 @@ const AdminDashboard = ({ adminProducts, catalogueStatus, onRetryCatalogue, cata
                 <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm font-bold" role="alert">{addError}</div>
               )}
               <div className="flex gap-3 mt-6">
-                <button onClick={handleAdd} disabled={busyProduct === 'new' || !addForm.title || !addForm.priceMin || !addForm.priceMax}
+                {/* Disabled only while publishing: handleAdd's validation names
+                    any problem. Guessing from the raw fields left the button
+                    dead with no message when a number box held text the
+                    browser could not read, which it reports as empty. */}
+                <button onClick={handleAdd} disabled={busyProduct === 'new'}
                   className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm">
                   <Plus size={16} /> {busyProduct === 'new' ? 'Publishing…' : 'Publish Product'}
                 </button>
@@ -2678,7 +2687,7 @@ export default function App() {
     return result;
   };
   const catalogueActions = {
-    saveEdit: (id, record) => runCatalogueAction(() => saveEdit(id, record)),
+    saveEdit: (id, record, openedEntry) => runCatalogueAction(() => saveEdit(id, record, openedEntry)),
     addProduct: (record) => runCatalogueAction(() => addProduct(record)),
     hideProduct: (id) => runCatalogueAction(() => hideProduct(id)),
     restoreOriginal: (id) => runCatalogueAction(() => restoreOriginal(id)),
@@ -2808,7 +2817,7 @@ export default function App() {
             </div>
           );
         }
-        return <AdminDashboard adminProducts={adminProducts} catalogueStatus={catalogue.status} onRetryCatalogue={retryCatalogue} catalogueActions={catalogueActions} onLogout={handleLogout} />;
+        return <AdminDashboard adminProducts={adminProducts} catalogueOverrides={catalogue.overrides} catalogueStatus={catalogue.status} onRetryCatalogue={retryCatalogue} catalogueActions={catalogueActions} onLogout={handleLogout} />;
       default:
         // A SPA cannot return HTTP 404 for an unknown URL — the server already
         // sent 200 with index.html. Marking it noindex is what stops Google

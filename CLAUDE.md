@@ -27,6 +27,7 @@ npm run generate-brand-assets  # Rebuild favicon/icons/logo/og-default.jpg in pu
 npm run check-catalogue  # Rules for admin catalogue changes (src/catalogueMerge.js); no network
 npm run check-rules      # Probes the LIVE Firestore rules as a signed-out visitor; never writes
 npm run check-site       # Headless crawl of a served build (or BASE=https://coollivinguae.com): SEO, images, product states
+npm run check-admin      # Drives the admin dashboard in headless Chrome against in-memory Firebase fakes; no network
 ```
 
 `prerender` needs the built site served on :4173 first (`npx vite preview --port 4173`).
@@ -159,6 +160,16 @@ optional `hidden: true`; an admin-added product's entry is a complete record wit
 `src/catalogueMerge.js` owns every rule — validation, merging, the edit operations — and imports
 nothing from Firebase, so `npm run check-catalogue` tests it in Node. `src/catalogue.js` only reads
 the document (once per page load) and writes it in transactions.
+
+An edit carries the entry that was stored when its form opened. If the stored entry has changed
+since — another device or tab saved that product — `applyEdit` refuses the save instead of writing
+the form's older values back over it. Hiding or restoring elsewhere is not a conflict.
+
+`npm run check-admin` exercises the dashboard end to end: Vite serves the real app with
+`firebase/app`, `firebase/auth` and `firebase/firestore` aliased to the in-memory fakes in
+`scripts/admin-fakes/`, and blocks every non-local request. The fakes implement only the functions
+`src/` imports — when code starts importing another one, add it to the matching fake, or the check
+fails at page load.
 
 One document rather than one per product keeps reads at one per visit, inside Spark's free 50,000
 a day. Photos are links, not uploads: Firebase Storage needs the pay-as-you-go Blaze plan, which
