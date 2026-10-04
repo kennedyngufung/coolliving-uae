@@ -72,7 +72,8 @@ service cloud.firestore {
         // Exactly the expected fields, nothing more. Blocks payload stuffing.
         request.resource.data.keys().hasOnly([
           'name', 'phone', 'location', 'propertyType',
-          'acType', 'acCapacity', 'message', 'createdAt'
+          'acType', 'acCapacity', 'message', 'createdAt',
+          'productId', 'productTitle'
         ])
         && request.resource.data.keys().hasAll(['name', 'phone', 'createdAt'])
         && isString(request.resource.data.name, 2, 80)
@@ -82,6 +83,13 @@ service cloud.firestore {
         && isString(request.resource.data.get('acType', ''), 0, 40)
         && isString(request.resource.data.get('acCapacity', ''), 0, 40)
         && isString(request.resource.data.get('message', ''), 0, 1000)
+        // The product the request was sent from, when there was one, so the
+        // dashboard can show which unit the visitor wants installed. Same id
+        // format as isValidProductId() in src/catalogueMerge.js.
+        && (!request.resource.data.keys().hasAny(['productId'])
+            || (isString(request.resource.data.productId, 1, 80)
+                && request.resource.data.productId.matches('^[a-z0-9]+(-[a-z0-9]+)*$')))
+        && isString(request.resource.data.get('productTitle', ''), 0, 140)
         && request.resource.data.createdAt == request.time;
     }
 

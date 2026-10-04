@@ -15,6 +15,7 @@
     "generate-brand-assets": "node scripts/generate-brand-assets.mjs",
     "check-catalogue": "node scripts/check-catalogue.mjs",
     "check-rules": "node scripts/check-rules.mjs",
+    "check-rules-local": "firebase emulators:exec --only firestore --project demo-coolliving \"node scripts/check-rules-local.mjs\"",
     "check-site": "node scripts/check-site.mjs",
     "check-admin": "node scripts/check-admin.mjs"
   },

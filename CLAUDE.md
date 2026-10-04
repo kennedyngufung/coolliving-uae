@@ -26,9 +26,17 @@ npm run check-images     # Product image rules; add `-- --network` to fetch ever
 npm run generate-brand-assets  # Rebuild favicon/icons/logo/og-default.jpg in public/ from the header logo
 npm run check-catalogue  # Rules for admin catalogue changes (src/catalogueMerge.js); no network
 npm run check-rules      # Probes the LIVE Firestore rules as a signed-out visitor; never writes
+npm run check-rules-local  # Runs firestore.rules in the Firestore emulator; needs Java 11+ on PATH
 npm run check-site       # Headless crawl of a served build (or BASE=https://coollivinguae.com): SEO, images, product states
 npm run check-admin      # Drives the admin dashboard in headless Chrome against in-memory Firebase fakes; no network
 ```
+
+Run `check-rules-local` before every rules deploy and `check-rules` after it. The live probe cannot
+test a public create: its writes carry a must-already-exist precondition so nothing is ever
+written, which makes the database judge them as updates. Proving a lead is *accepted* takes a real
+create, so that happens in the emulator, under the project id `demo-coolliving`, which Firebase
+never connects to a real project. Java is not installed on the owner's machine; a portable JDK on
+`PATH` for the one command is enough.
 
 `prerender` needs the built site served on :4173 first (`npx vite preview --port 4173`).
 It waits on `domcontentloaded`, not `networkidle0` — pages that read Firestore hold an open
@@ -185,6 +193,10 @@ re-run it; do not hand-edit the outputs. The wordmark uses the system UI font, a
 header does, so raster files take the generating machine's font (committed ones: Windows,
 Segoe UI).
 
+`src/index.css` restores Tailwind 3's light-grey default border colour. Tailwind 4 draws a border
+with no colour class in the text colour, which put near-black lines under the header; the markup
+was written for the old default.
+
 ### Analytics
 
 GA4 lives in `src/analytics.js`, not in a script tag. Three reasons: GA4 reports one page
@@ -236,7 +248,10 @@ privacy policy promises deletion on request.
 
 The installation form validates against the same limits `firestore.rules` enforces (name 2–80
 characters, phone 6–25) via `LEAD_LIMITS` in `App.jsx`. Change both together, or the rules
-reject requests the form accepts.
+reject requests the form accepts. A request sent from a product page also carries `productId`
+and `productTitle` (at most 140 characters), so the dashboard can say which unit to install; the
+form leaves them out whenever the rules would refuse them, because a lead must never fail over
+them. `npm run check-admin` fails if the form sends any field the rules' list does not allow.
 
 ### Admin access
 
@@ -247,6 +262,11 @@ The dashboard's product editor saves to `catalogue/overrides` (see "Catalogue ov
 changes are live immediately. The product tabs stay locked until the overrides have loaded: a form
 opened earlier would show original values, and saving it would discard earlier changes. Delete
 hides a built-in product (Restore original brings it back) and permanently removes an added one.
+
+Layout: the site header is sticky and `h-20`, so the dashboard's tab bar sticks at `top-20` just
+below it and its title row scrolls away — two bars both stuck at `top-0` put Logout behind the
+menu. On a phone the tab bar and the product list scroll sideways rather than widening the page.
+The visitor-facing mission section is not rendered on the admin route.
 
 ## Deployment state — important context
 

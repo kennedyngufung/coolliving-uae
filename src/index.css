@@ -1,1 +1,15 @@
 @import "tailwindcss";
+
+/* Tailwind 4 draws a border that has no colour class in the text colour,
+   which put near-black lines under the header and the dashboard tabs. The
+   markup was written for Tailwind 3's light-grey default; this restores it
+   (the compatibility rule from Tailwind's v4 upgrade guide). */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}

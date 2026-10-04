@@ -9,11 +9,21 @@
  */
 const clone = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
 
+// Like the real SDK, refuse `undefined` anywhere in written data — cloning
+// through JSON would otherwise drop it silently and hide the bug.
+function assertNoUndefined(value, method, path = '') {
+  if (value === undefined) throw new Error(`Function ${method}() called with invalid data. Unsupported field value: undefined (found in field ${path || '(root)'})`);
+  if (value !== null && typeof value === 'object') {
+    for (const [key, item] of Object.entries(value)) assertNoUndefined(item, method, path ? `${path}.${key}` : key);
+  }
+}
+
 const documents = new Map(Object.entries(window.__seedDocuments || {}).map(([path, data]) => [path, clone(data)]));
 
 window.__firestore = {
   get: (path) => clone(documents.get(path)),
   set: (path, data) => { documents.set(path, clone(data)); },
+  all: () => clone(Object.fromEntries(documents)),
 };
 
 export const getFirestore = () => ({});
@@ -43,12 +53,14 @@ export async function getDocs(ref) {
 }
 
 export async function addDoc(ref, data) {
+  assertNoUndefined(data, 'addDoc');
   const id = `fake-${documents.size + 1}`;
   documents.set(`${ref.collection}/${id}`, clone(data));
   return { id };
 }
 
 export async function updateDoc(ref, data) {
+  assertNoUndefined(data, 'updateDoc');
   documents.set(ref.path, { ...documents.get(ref.path), ...clone(data) });
 }
 
@@ -62,7 +74,7 @@ export async function runTransaction(db, update) {
   const writes = [];
   const result = await update({
     get: async (ref) => snapshotOf(ref),
-    set: (ref, data) => { writes.push([ref.path, clone(data)]); },
+    set: (ref, data) => { assertNoUndefined(data, 'Transaction.set'); writes.push([ref.path, clone(data)]); },
   });
   for (const [path, data] of writes) documents.set(path, data);
   return result;

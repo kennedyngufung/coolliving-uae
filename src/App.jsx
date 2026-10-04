@@ -18,7 +18,7 @@ import AffiliateDisclosure from './components/AffiliateDisclosure';
 import ProductImage from './components/ProductImage';
 import RouteLink from './components/RouteLink';
 import ImageLinkField from './components/ImageLinkField';
-import { buildCatalogue, validateProductForm } from './catalogueMerge';
+import { buildCatalogue, validateProductForm, isValidProductId } from './catalogueMerge';
 import {
   fetchCatalogueOverrides, saveEdit, addProduct, hideProduct, restoreOriginal, removeAddedProduct,
 } from './catalogue';
@@ -383,6 +383,7 @@ const LEAD_LIMITS = {
   name: { min: 2, max: 80 },
   phone: { min: 6, max: 25 },
   message: { max: 1000 },
+  productTitle: { max: 140 },
 };
 
 // Digits with optional leading +, spaces, brackets and dashes, 6–25 characters.
@@ -457,6 +458,15 @@ const InstallationPage = ({ productId, products, navigate }) => {
       return;
     }
 
+    // The product page the request came from, so the dashboard can show which
+    // unit to install. Left out whenever firestore.rules would refuse it — a
+    // lead must never fail over this.
+    const productFields = product && isValidProductId(product.id)
+      && typeof product.title === 'string' && product.title.length > 0
+      && product.title.length <= LEAD_LIMITS.productTitle.max
+      ? { productId: product.id, productTitle: product.title }
+      : {};
+
     setSubmitting(true);
     try {
       await addDoc(collection(db, "installationRequests"), {
@@ -467,6 +477,7 @@ const InstallationPage = ({ productId, products, navigate }) => {
         acType: formData.acType,
         acCapacity: formData.acCapacity,
         message,
+        ...productFields,
         createdAt: serverTimestamp()
       });
       setFormData(EMPTY_LEAD);
@@ -1802,6 +1813,42 @@ const ProductNotice = ({ notice, onDismiss }) => {
 /** Leads shown in the dashboard: the most recent this many. */
 const LEADS_LIMIT = 200;
 
+/**
+ * The product a lead was sent from: its current title while it is still in
+ * the catalogue (linked to its page unless hidden), otherwise the title saved
+ * with the lead. An empty title means a general request.
+ */
+function describeLeadProduct(lead, products) {
+  const id = isValidProductId(lead.productId) ? lead.productId : '';
+  const current = id ? products.find((p) => p.id === id) : undefined;
+  const saved = typeof lead.productTitle === 'string' ? lead.productTitle.trim() : '';
+  return {
+    title: current?.title || saved,
+    href: current && !current.isHidden ? routeToPath('product', { id }) : '',
+  };
+}
+
+/** The "Product requested" row on a lead card. */
+const LeadProductLine = ({ lead, products }) => {
+  const { title, href } = describeLeadProduct(lead, products);
+  return (
+    <div className="bg-blue-50 rounded-xl p-3 border border-blue-100 mb-3">
+      <div className="text-[10px] text-blue-500 font-bold uppercase tracking-wide mb-1">Product requested</div>
+      {!title && <div className="text-sm font-bold text-slate-500">General request — no product chosen</div>}
+      {title && href && (
+        <a href={href} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-700 hover:underline break-words">
+          {title} <ExternalLink size={13} className="inline -mt-0.5" aria-hidden="true" />
+        </a>
+      )}
+      {title && !href && (
+        <div className="text-sm font-bold text-slate-800 break-words">
+          {title} <span className="text-xs text-slate-400">(no longer listed on the site)</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AdminDashboard = ({ adminProducts, catalogueOverrides, catalogueStatus, onRetryCatalogue, catalogueActions, onLogout }) => {
   const [tab, setTab]               = useState('overview');
   // null = not loaded yet; an array = loaded (possibly empty).
@@ -2039,8 +2086,9 @@ const AdminDashboard = ({ adminProducts, catalogueOverrides, catalogueStatus, on
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ── Top Bar ── */}
-      <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
+      {/* ── Top Bar ── scrolls with the page. It used to stick as well, and
+          slid underneath the site's own sticky menu, hiding Logout. */}
+      <div className="bg-white">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="bg-blue-600 text-white p-2 rounded-xl"><ShieldCheck size={20} /></div>
@@ -2060,11 +2108,15 @@ const AdminDashboard = ({ adminProducts, catalogueOverrides, catalogueStatus, on
             </button>
           </div>
         </div>
-        {/* ── Tab Bar ── */}
-        <div className="max-w-7xl mx-auto px-4 flex gap-1 pb-0">
+      </div>
+      {/* ── Tab Bar ── sticks directly below the site menu, which is h-20.
+          On a phone the tabs are wider than the screen, so the bar scrolls
+          sideways instead of pushing the page wider. */}
+      <div className="bg-white border-b shadow-sm sticky top-20 z-40">
+        <div className="max-w-7xl mx-auto px-4 flex gap-1 pb-0 overflow-x-auto">
           {tabs.map(({ id, label, icon: Icon, badge }) => (
             <button key={id} onClick={() => { setTab(id); setEditingProduct(null); }}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-bold border-b-2 transition-all relative ${tab === id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-bold border-b-2 transition-all relative whitespace-nowrap flex-shrink-0 ${tab === id ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
               <Icon size={15} /> {label}
               {badge > 0 && <span className="bg-orange-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">{badge}</span>}
             </button>
@@ -2153,7 +2205,7 @@ const AdminDashboard = ({ adminProducts, catalogueOverrides, catalogueStatus, on
                     <div key={lead.id} className="flex items-center justify-between bg-slate-50 rounded-xl p-4 border border-slate-100">
                       <div>
                         <div className="font-bold text-slate-900 text-sm">{lead.name || 'Anonymous'}</div>
-                        <div className="text-xs text-slate-400">{lead.location || lead.city || 'UAE'} · {lead.acType || 'Installation Request'}</div>
+                        <div className="text-xs text-slate-400">{lead.location || lead.city || 'UAE'} · {describeLeadProduct(lead, adminProducts).title || lead.acType || 'General request'}</div>
                       </div>
                       <span className={`text-[10px] font-black px-3 py-1 rounded-full ${!lead.status || lead.status === 'new' ? 'bg-orange-100 text-orange-700' : lead.status === 'contacted' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
                         {lead.status || 'NEW'}
@@ -2226,11 +2278,11 @@ const AdminDashboard = ({ adminProducts, catalogueOverrides, catalogueStatus, on
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  <LeadProductLine lead={lead} products={adminProducts} />
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
                     {[
                       { icon: MapPin,       label: 'Location',   val: lead.location || lead.city || '—' },
                       { icon: Mail,          label: 'Contact',    val: lead.phone || lead.email || '—' },
-                      { icon: Thermometer,  label: 'AC Type',    val: lead.acType || lead.productTitle || '—' },
                       { icon: Calendar,     label: 'Urgency',    val: lead.urgency || lead.timeline || 'Not specified' },
                     ].map(({ icon: Icon, label, val }) => (
                       <div key={label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
@@ -2316,8 +2368,9 @@ const AdminDashboard = ({ adminProducts, catalogueOverrides, catalogueStatus, on
               </select>
             </div>
 
-            {/* Product List */}
-            <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+            {/* Product List — scrolls sideways on a phone; clipping it hid the
+                Hide and Restore buttons off the right edge. */}
+            <div className="bg-white rounded-2xl border border-gray-100 overflow-x-auto shadow-sm">
               <table className="w-full text-left">
                 <thead className="bg-slate-50 border-b text-[10px] font-black uppercase text-slate-400 tracking-widest">
                   <tr>
@@ -2875,7 +2928,9 @@ export default function App() {
         )}
       </header>
       <main className="flex-grow">{renderPage()}</main>
-      <AboutUsSection productCount={products.length} />
+      {/* The mission section is for visitors; under the dashboard it read as
+          part of the admin page. */}
+      {route.path !== 'admin' && <AboutUsSection productCount={products.length} />}
       <footer className="bg-slate-900 text-slate-400 py-12">
         <div className="max-w-7xl mx-auto px-4">
           {/* Five columns: the grid previously declared four, which pushed
