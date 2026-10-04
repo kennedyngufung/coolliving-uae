@@ -13,7 +13,8 @@
     "generate-sitemap": "node scripts/generate-sitemap.mjs",
     "check-images": "node scripts/check-images.mjs",
     "generate-brand-assets": "node scripts/generate-brand-assets.mjs",
-    "check-catalogue": "node scripts/check-catalogue.mjs"
+    "check-catalogue": "node scripts/check-catalogue.mjs",
+    "check-rules": "node scripts/check-rules.mjs"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.2.1",

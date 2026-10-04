@@ -24,6 +24,8 @@ npm run build:prod       # build + generate-sitemap
 npm run prerender        # Puppeteer static prerender of all 73 crawlable URLs
 npm run check-images     # Product image rules; add `-- --network` to fetch every remote image
 npm run generate-brand-assets  # Rebuild favicon/icons/logo/og-default.jpg in public/ from the header logo
+npm run check-catalogue  # Rules for admin catalogue changes (src/catalogueMerge.js); no network
+npm run check-rules      # Probes the LIVE Firestore rules as a signed-out visitor; never writes
 ```
 
 `prerender` needs the built site served on :4173 first (`npx vite preview --port 4173`).
@@ -145,6 +147,20 @@ No. 15 of 2020 on Consumer Protection all bear on this.
 `src/App.jsx` is ~2,750 lines and holds most page components. It is large; prefer extracting
 into `src/components/` when adding substantial new surface rather than growing it further.
 
+### Catalogue overrides
+
+The admin dashboard saves product changes to one Firestore document, `catalogue/overrides`: a map
+of product id → entry. A built-in product's entry holds only the fields that changed, plus an
+optional `hidden: true`; an admin-added product's entry is a complete record with `addedAt`.
+`src/catalogueMerge.js` owns every rule — validation, merging, the edit operations — and imports
+nothing from Firebase, so `npm run check-catalogue` tests it in Node. `src/catalogue.js` only reads
+the document (once per page load) and writes it in transactions.
+
+One document rather than one per product keeps reads at one per visit, inside Spark's free 50,000
+a day. Photos are links, not uploads: Firebase Storage needs the pay-as-you-go Blaze plan, which
+the owner has ruled out. Admin-added products are not in the build-time sitemap; Google reaches
+them through the category pages' links.
+
 ### Brand assets
 
 The favicon set, app icons, `site.webmanifest`, `logo.png` and `og-default.jpg` in `public/` are
@@ -181,12 +197,14 @@ deliberately — Google documents the web API key as a public project identifier
 every client bundle. **Access control comes entirely from `firestore.rules`, never from hiding
 that config.**
 
-Two collections:
+Three collections:
 
 - `installationRequests` — public HVAC lead form. Contains names and phone numbers, so it is
   **write-only for the public**; only an admin can read.
 - `residentReviews` — public submissions written `approved: false`, published only after admin
   moderation. See `src/reviews.js`, which owns validation, submission, and bounded reads.
+- `catalogue/overrides` — one document holding every product change made in the admin dashboard
+  (see "Catalogue overrides"). Readable by anyone, writable only by an allowlisted admin.
 
 Admin identity is a **UID allowlist** in `firestore.rules` (`adminUids()`). Checking
 `request.auth != null` is NOT sufficient: enabling the Email/Password provider makes
@@ -225,13 +243,14 @@ As of 2026-10-04:
   apex, which must stay the primary because every canonical URL, the sitemap and robots.txt use
   it. Porkbun's MX/SPF records provide email forwarding — keep them.
 - Firebase Hosting is configured in `firebase.json` but has never been deployed or used.
-- **Whether `firestore.rules` has been deployed is unconfirmed.** Anonymous reads of both
-  collections are denied by the live rules (checked 2026-10-04), but that is also true of a
-  locked console default. Until the repo's rules are deployed, the live rules are whatever is
-  configured in the console.
+- **`firestore.rules` is deployed** and is the source of truth: the owner reads leads in the live
+  dashboard, which only these rules allow, and `npm run check-rules` probes the live behaviour.
+- The Firebase CLI on the owner's machine is signed in as the owner, so
+  `firebase deploy --only firestore:rules` can run from here — only with the owner's explicit
+  approval, since it changes production access control. Compile first with `--dry-run`.
 
-Deploying rules requires `firebase login`, which needs an interactive browser sign-in that Claude
-Code cannot complete. That step must be run by the user.
+If the CLI is ever signed out, `firebase login` needs an interactive browser sign-in that only the
+owner can complete.
 
 ```bash
 firebase deploy --only firestore   # ships firestore.rules AND firestore.indexes.json

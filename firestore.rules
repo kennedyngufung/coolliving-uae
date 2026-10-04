@@ -113,6 +113,21 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // ── Catalogue overrides ───────────────────────────────────────────────
+    // Product changes made in the admin dashboard: one document holding a
+    // map of product id → entry (src/catalogueMerge.js). Readable by anyone —
+    // it is the public catalogue — and writable only by an allowlisted admin.
+    // Rules cannot iterate a map, so the dashboard validates each entry before
+    // saving and buildCatalogue() validates it again when the site reads it.
+    match /catalogue/{docId} {
+      allow get: if docId == 'overrides';
+      allow create, update: if isAdmin()
+        && docId == 'overrides'
+        && request.resource.data.keys().hasOnly(['products', 'updatedAt'])
+        && request.resource.data.products is map
+        && request.resource.data.updatedAt == request.time;
+    }
+
     // ── Everything else ───────────────────────────────────────────────────
     // Default deny. A new collection is unreachable until rules are written
     // for it deliberately, rather than inheriting public access by omission.
