@@ -231,6 +231,17 @@ check('applyEdit refuses a stale edit to an added product', () => {
   );
 });
 
+check('a save retried after its reply was lost is not reported as a conflict', () => {
+  // Firestore re-runs a transaction whose commit reply was lost, even when the
+  // commit landed; the second run then finds this very edit already stored.
+  const builtInEdit = { ...builtInsById.get('ac-4'), description: 'z'.repeat(50) };
+  const landed = applyEdit({}, builtInsById, 'ac-4', builtInEdit, undefined);
+  assert.deepEqual(applyEdit(landed, builtInsById, 'ac-4', builtInEdit, undefined), landed);
+  const addedEdit = { ...VALID_NEW, addedAt: undefined, title: 'LG ArtCool Renamed' };
+  const landedAdded = applyEdit({ 'lg-artcool-aaaa': VALID_NEW }, builtInsById, 'lg-artcool-aaaa', addedEdit, VALID_NEW);
+  assert.deepEqual(applyEdit(landedAdded, builtInsById, 'lg-artcool-aaaa', addedEdit, VALID_NEW), landedAdded);
+});
+
 check('applyAdd picks a free id and stamps addedAt', () => {
   const { products: map, id } = applyAdd({}, builtInsById, { ...VALID_NEW, addedAt: undefined }, { now: 5000, random: () => 0 });
   assert.equal(id, 'lg-artcool-1-5-ton-t3-inverter-split-ac-0000');

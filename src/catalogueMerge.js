@@ -288,18 +288,23 @@ function sameEditableValues(a, b) {
  * form opened (undefined when there was none). The form holds every field,
  * so if another device or tab saved this product since, saving the form
  * would silently put back the old values — the edit is refused instead.
+ * A stored entry that already holds exactly this edit is not a conflict:
+ * Firestore re-runs a transaction whose commit reply was lost, even when the
+ * commit landed.
  */
 export function applyEdit(products, builtInsById, id, record, openedEntry) {
   const next = { ...products };
   const base = builtInsById.get(id);
   const existing = products[id];
   if (!base && !isPlainObject(existing)) throw new CatalogueError(NO_LONGER_EXISTS);
-  if (!sameEditableValues(existing, openedEntry)) throw new CatalogueError(CHANGED_ELSEWHERE);
+  const saved = base ? diffAgainstBuiltIn(base, record) : record;
+  if (!sameEditableValues(existing, openedEntry) && !sameEditableValues(existing, saved)) {
+    throw new CatalogueError(CHANGED_ELSEWHERE);
+  }
   if (base) {
     const hidden = cleanBuiltInEntry(products, id).hidden === true;
-    const changes = diffAgainstBuiltIn(base, record);
-    if (Object.keys(changes).length === 0 && !hidden) delete next[id];
-    else next[id] = { ...changes, ...(hidden ? { hidden: true } : {}) };
+    if (Object.keys(saved).length === 0 && !hidden) delete next[id];
+    else next[id] = { ...saved, ...(hidden ? { hidden: true } : {}) };
     return next;
   }
   next[id] = { ...record, addedAt: existing.addedAt };
