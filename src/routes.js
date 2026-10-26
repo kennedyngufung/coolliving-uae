@@ -19,6 +19,8 @@
  * ---------------------------------------------------------------------------
  */
 
+import { CATEGORY_IDS } from './data/categories.js';
+
 /** Routes with no parameters: internal path name ↔ URL segment. */
 const STATIC_ROUTES = {
   '/': '/',
@@ -31,6 +33,7 @@ const STATIC_ROUTES = {
   security: '/security',
   terms: '/terms',
   calculator: '/calculator',
+  lifestyle: '/lifestyle',
   admin: '/admin',
 };
 
@@ -142,9 +145,7 @@ export function crawlablePaths(products = []) {
     .filter(([name]) => name !== 'admin')
     .map(([, url]) => url);
 
-  const categoryPaths = ['smart-acs', 'air-purifiers', 'smart-thermostats'].map(
-    (id) => `/category/${id}`
-  );
+  const categoryPaths = CATEGORY_IDS.map((id) => `/category/${id}`);
 
   const productPaths = products.map((product) => `/product/${product.id}`);
 

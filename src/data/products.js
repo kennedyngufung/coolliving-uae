@@ -41,6 +41,8 @@
  * ---------------------------------------------------------------------------
  */
 
+import { gymWear, homeAppliances, dresses, shoes } from './lifestyle.js';
+
 const smartAcs = [
   {
     id: 'ac-1', brand: 'LG', title: 'LG DualCool 1.5 Ton T3 Inverter Split AC',
@@ -475,6 +477,10 @@ export const products = [
   ...smartAcs.map((p) => ({ ...p, category: 'smart-acs' })),
   ...airPurifiers.map((p) => ({ ...p, category: 'air-purifiers' })),
   ...smartThermostats.map((p) => ({ ...p, category: 'smart-thermostats' })),
+  ...gymWear.map((p) => ({ ...p, category: 'gym-wear' })),
+  ...homeAppliances.map((p) => ({ ...p, category: 'home-appliances' })),
+  ...dresses.map((p) => ({ ...p, category: 'dresses' })),
+  ...shoes.map((p) => ({ ...p, category: 'shoes' })),
 ];
 
 /** Formats a price band for display, e.g. "AED 1,750 – 2,200". */
@@ -483,6 +489,11 @@ export function formatPriceBand(band) {
     return 'Price varies';
   }
   return `AED ${band.min.toLocaleString()} – ${band.max.toLocaleString()}`;
+}
+
+/** An editorial score for display, always with one decimal: 4 → "4.0". */
+export function formatScore(score) {
+  return typeof score === 'number' && Number.isFinite(score) ? score.toFixed(1) : '–';
 }
 
 /** Midpoint of a band, used wherever products need ordering by price. */

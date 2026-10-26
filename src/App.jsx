@@ -8,9 +8,11 @@ import {
   XCircle, Thermometer, Wind, Zap, Link as LinkIcon, 
   Plus, Edit, Trash2, ExternalLink, Settings, BarChart, Lock, Save,
   Calendar, Clock, User, Star, Mail, MapPin, MessageSquare, ArrowLeft, LogOut,
-  Droplets, Sun, Activity, HelpCircle, ChevronDown, ChevronUp, Quote, RotateCcw
+  Droplets, Sun, Activity, HelpCircle, ChevronDown, ChevronUp, Quote, RotateCcw,
+  Dumbbell, Refrigerator, Shirt, Footprints
 } from 'lucide-react';
-import { products as catalogueProducts, formatPriceBand, priceBandMidpoint } from './data/products';
+import { products as catalogueProducts, formatPriceBand, formatScore, priceBandMidpoint } from './data/products';
+import { categories as categoryList, CATEGORY_GROUPS, categoryById, groupOf } from './data/categories';
 import { uaeACDatabase } from './data/calculatorAcs';
 import { hasActiveAffiliateProgramme } from './affiliate';
 import AffiliateLink from './components/AffiliateLink';
@@ -32,12 +34,18 @@ const EMPTY_PRODUCT_FORM = {
   editorialScore: '4.5', image: '', amazonQuery: '', description: '', tons: '',
 };
 
-// --- MOCK DATABASE ---
-const initialCategories = [
-  { id: 'smart-acs', name: 'Smart ACs', icon: Thermometer, description: 'The best smart air conditioners in UAE for extreme T3 climate conditions.' },
-  { id: 'air-purifiers', name: 'Air Purifiers', icon: Wind, description: 'Top-rated HEPA air purifiers for Dubai homes to combat dust and allergies.' },
-  { id: 'smart-thermostats', name: 'Smart Thermostats', icon: Zap, description: 'Intelligent thermostats to reduce DEWA bills and energy consumption in the UAE.' }
-];
+// --- CATEGORIES ---
+// The data is in src/data/categories.js; only the card icons live here.
+const CATEGORY_ICONS = {
+  'smart-acs': Thermometer,
+  'air-purifiers': Wind,
+  'smart-thermostats': Zap,
+  'gym-wear': Dumbbell,
+  'home-appliances': Refrigerator,
+  'dresses': Shirt,
+  'shoes': Footprints,
+};
+const initialCategories = categoryList.map((category) => ({ ...category, icon: CATEGORY_ICONS[category.id] || LayoutList }));
 
 
 const faqData = [
@@ -182,7 +190,7 @@ const ProductCard = ({ product, navigate }) => {
         >
           {/* Labelled on the badge itself: a bare star and number reads as an
               average of customer ratings, which this is not. */}
-          <Star size={10} fill="currentColor" aria-hidden="true" /> Our score {product.editorialScore}
+          <Star size={10} fill="currentColor" aria-hidden="true" /> Our score {formatScore(product.editorialScore)}
         </div>
       </div>
       <div className="p-5 flex flex-col flex-grow">
@@ -209,15 +217,31 @@ const ProductCard = ({ product, navigate }) => {
               Check Price
             </AffiliateLink>
           </div>
-          <button onClick={e => { e.stopPropagation(); navigate('installation', { id: product.id }); }}
-            className="w-full bg-green-600 text-white py-2 rounded-lg font-bold hover:bg-green-700 transition-all text-xs flex items-center justify-center gap-1">
-            <Settings size={14} /> Request Installation
-          </button>
+          {groupOf(product.category).installable && (
+            <button onClick={e => { e.stopPropagation(); navigate('installation', { id: product.id }); }}
+              className="w-full bg-green-600 text-white py-2 rounded-lg font-bold hover:bg-green-700 transition-all text-xs flex items-center justify-center gap-1">
+              <Settings size={14} /> Request Installation
+            </button>
+          )}
         </div>
       </div>
     </article>
   );
 };
+
+/** A category tile with a Browse button — on the homepage and the Lifestyle page. */
+const CategoryCard = ({ category, navigate }) => (
+  <div className="bg-white p-6 rounded-2xl shadow-sm hover:shadow-lg border border-gray-100 transition-all flex flex-col gap-4 group">
+    <div className="flex items-start gap-4">
+      <div className="bg-blue-50 text-blue-600 p-4 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-colors flex-shrink-0"><category.icon size={28} /></div>
+      <div><h3 className="font-bold text-xl text-gray-900 mb-1">{category.name}</h3><p className="text-gray-500 text-sm leading-relaxed">{category.description}</p></div>
+    </div>
+    <RouteLink to="category" params={{ id: category.id }} navigate={navigate}
+      className="mt-auto w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all text-sm flex items-center justify-center gap-2 shadow-sm group-hover:shadow-md">
+      Browse {category.name} <ChevronRight size={16} />
+    </RouteLink>
+  </div>
+);
 
 const FAQItem = ({ item }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -283,6 +307,9 @@ const ReviewCard = ({ review }) => {
 // --- PAGES ---
 const HomePage = ({ products, categories, navigate }) => {
   useEffect(() => updateSEO('Best Smart Cooling & Energy Saving Tech in UAE 2026', 'Independent, research-based reviews of air conditioners, air purifiers and smart thermostats for the UAE climate.'), []);
+  const coolingCategories = categories.filter(c => c.group === 'cooling');
+  const lifestyleCategories = categories.filter(c => c.group === 'lifestyle');
+  const coolingCount = products.filter(p => groupOf(p.category).id === 'cooling').length;
 
   // Approved resident reviews only. The section stays hidden until real
   // submissions have been moderated through — an empty testimonial rail is
@@ -300,7 +327,7 @@ const HomePage = ({ products, categories, navigate }) => {
         <div className="absolute top-0 right-0 opacity-10 pointer-events-none"><Wind size={400} /></div>
         <div className="max-w-4xl mx-auto text-center relative z-10">
           <h1 className="text-4xl md:text-6xl font-extrabold mb-6 leading-tight tracking-tight">Master the UAE Climate with <span className="text-teal-400">Smart Technology</span></h1>
-          <p className="text-lg md:text-xl text-blue-100 mb-10 max-w-2xl mx-auto">Independent, research-based reviews of {products.length} air conditioners, air purifiers and smart thermostats, assessed for Dubai's extreme summer heat.</p>
+          <p className="text-lg md:text-xl text-blue-100 mb-10 max-w-2xl mx-auto">Independent, research-based reviews of {coolingCount} air conditioners, air purifiers and smart thermostats, assessed for Dubai's extreme summer heat.</p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <RouteLink to="category" params={{ id: 'smart-acs' }} navigate={navigate} className="text-center bg-teal-500 hover:bg-teal-400 text-white font-bold py-4 px-8 rounded-full shadow-lg transition-transform hover:-translate-y-1">Explore Smart ACs</RouteLink>
             <RouteLink to="guides" navigate={navigate} className="text-center bg-white/10 hover:bg-white/20 backdrop-blur-md text-white font-bold py-4 px-8 rounded-full border border-white/30 transition-colors">DEWA Saving Guides</RouteLink>
@@ -311,18 +338,7 @@ const HomePage = ({ products, categories, navigate }) => {
         <section className="mb-20">
           <h2 className="text-3xl font-bold text-gray-900 mb-8">Best Smart Tech for UAE Homes (2026)</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {categories.map(cat => (
-              <div key={cat.id} className="bg-white p-6 rounded-2xl shadow-sm hover:shadow-lg border border-gray-100 transition-all flex flex-col gap-4 group">
-                <div className="flex items-start gap-4">
-                  <div className="bg-blue-50 text-blue-600 p-4 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-colors flex-shrink-0"><cat.icon size={28} /></div>
-                  <div><h3 className="font-bold text-xl text-gray-900 mb-1">{cat.name}</h3><p className="text-gray-500 text-sm leading-relaxed">{cat.description}</p></div>
-                </div>
-                <RouteLink to="category" params={{ id: cat.id }} navigate={navigate}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all text-sm flex items-center justify-center gap-2 shadow-sm group-hover:shadow-md">
-                  Browse {cat.name} <ChevronRight size={16} />
-                </RouteLink>
-              </div>
-            ))}
+            {coolingCategories.map(cat => <CategoryCard key={cat.id} category={cat} navigate={navigate} />)}
           </div>
         </section>
 
@@ -340,6 +356,22 @@ const HomePage = ({ products, categories, navigate }) => {
                 <Thermometer size={18} /> Try AC Calculator <ChevronRight size={16} />
               </RouteLink>
             </div>
+          </div>
+        </section>
+
+        {/* Lifestyle picks — after the cooling sections, which stay the site's focus */}
+        <section className="mb-20">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">Lifestyle Picks for the UAE Heat</h2>
+              <p className="text-gray-500 max-w-2xl">Gym wear, home appliances, dresses and shoes chosen for 45°C summers, coastal humidity and desert dust.</p>
+            </div>
+            <RouteLink to="lifestyle" navigate={navigate} className="text-blue-600 font-bold text-sm hover:underline flex items-center gap-1 flex-shrink-0">
+              See all lifestyle picks <ChevronRight size={16} />
+            </RouteLink>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {lifestyleCategories.map(cat => <CategoryCard key={cat.id} category={cat} navigate={navigate} />)}
           </div>
         </section>
 
@@ -400,7 +432,9 @@ const EMPTY_LEAD = {
 };
 
 const InstallationPage = ({ productId, products, navigate }) => {
-  const product = products.find(p => p.id === productId);
+  // Only products that can be installed are tied to a request; an address
+  // like /installation/shoe-1 is treated as a general enquiry.
+  const product = products.find(p => p.id === productId && groupOf(p.category).installable);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -752,26 +786,97 @@ const NotFoundMessage = ({ navigate, title = '404 — Page Not Found', message =
   </div>
 );
 
+/** Breadcrumb trail down to a category — lifestyle categories sit under the Lifestyle page. */
+const categoryCrumbs = (category) => [
+  ...(category.group === 'lifestyle' ? [{ name: CATEGORY_GROUPS.lifestyle.name, path: 'lifestyle' }] : []),
+  { name: category.name, path: 'category', params: { id: category.id } },
+];
+
 const CategoryPage = ({ categoryId, categories, products, navigate }) => {
   const category = categories.find(c => c.id === categoryId);
   const categoryProducts = products.filter(p => p.category === categoryId);
   useEffect(() => {
-    if (category) updateSEO(`${category.name} Reviews for Dubai & UAE (2026)`, category.description);
+    if (category) updateSEO(category.seoTitle || `${category.name} Reviews for Dubai & UAE (2026)`, category.description);
     else updateSEO('Category Not Found', 'This category does not exist.', '', '', true);
   }, [category]);
   if (!category) return <NotFoundMessage navigate={navigate} title="Category not found" message="We do not have a category at this address." />;
+  // The last crumb is the page itself, so it is plain text, not a link.
+  const crumbs = categoryCrumbs(category).map((crumb, i, all) => (i === all.length - 1 ? { name: crumb.name } : crumb));
   return (
     <div className="max-w-7xl mx-auto px-4 py-12 animate-in fade-in">
-      <Breadcrumbs items={[{ name: category?.name }]} navigate={navigate} />
+      <Breadcrumbs items={crumbs} navigate={navigate} />
       <div className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
            <h1 className="text-4xl font-extrabold text-gray-900 mb-2">Best {category?.name} in UAE</h1>
            <p className="text-gray-600 max-w-2xl">{category?.description}</p>
+           {category.intro && <p className="text-gray-500 text-sm max-w-2xl mt-3 leading-relaxed">{category.intro}</p>}
         </div>
       </div>
       <AffiliateDisclosure className="mb-8" />
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
         {categoryProducts.map(product => <ProductCard key={product.id} product={product} navigate={navigate} />)}
+      </div>
+      {category.tips && (
+        <section className="mt-16 bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-gray-100">
+          <h2 className="text-2xl font-black text-slate-900 mb-2">Buying {category.name.toLowerCase()} for the UAE heat</h2>
+          <p className="text-slate-500 text-sm mb-8">What to look for before you choose — whichever brand you buy.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {category.tips.map(tip => (
+              <div key={tip.title} className="flex gap-3">
+                <CheckCircle size={20} className="text-teal-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm mb-1">{tip.title}</h3>
+                  <p className="text-slate-600 text-sm leading-relaxed">{tip.text}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+};
+
+/** The Lifestyle hub: the four lifestyle categories and the top pick in each. */
+const LifestylePage = ({ categories, products, navigate }) => {
+  const group = CATEGORY_GROUPS.lifestyle;
+  useEffect(() => updateSEO('Lifestyle Picks for the UAE Heat: Gym Wear, Appliances, Dresses & Shoes (2026)', group.description), [group.description]);
+  const lifestyleCategories = categories.filter(c => c.group === 'lifestyle');
+  const topPicks = lifestyleCategories
+    .map(c => products.filter(p => p.category === c.id).sort((a, b) => b.editorialScore - a.editorialScore)[0])
+    .filter(Boolean);
+  return (
+    <div className="animate-in fade-in duration-500">
+      <section className="bg-gradient-to-br from-blue-900 via-blue-800 to-teal-800 text-white py-16 px-6 rounded-3xl mx-4 my-6 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 opacity-10 pointer-events-none"><Sun size={360} /></div>
+        <div className="max-w-4xl mx-auto text-center relative z-10">
+          <div className="inline-flex items-center gap-2 bg-teal-500/20 border border-teal-400/30 rounded-full px-4 py-2 text-teal-300 text-xs font-bold uppercase tracking-widest mb-5"><Sun size={12} /> {group.name}</div>
+          <h1 className="text-4xl md:text-5xl font-extrabold mb-5 leading-tight tracking-tight">Made for the <span className="text-teal-400">UAE Heat</span></h1>
+          <p className="text-lg text-blue-100 max-w-2xl mx-auto">{group.description}</p>
+        </div>
+      </section>
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <Breadcrumbs items={[{ name: group.name }]} navigate={navigate} />
+        <section className="mb-16">
+          <h2 className="text-3xl font-bold text-gray-900 mb-8">Browse the Categories</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {lifestyleCategories.map(cat => <CategoryCard key={cat.id} category={cat} navigate={navigate} />)}
+          </div>
+        </section>
+        {topPicks.length > 0 && (
+          <section className="mb-16">
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Our Top Pick in Each Category</h2>
+            <p className="text-gray-500 mb-6">The highest editorial score in each category.</p>
+            <AffiliateDisclosure className="mb-8" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {topPicks.map(product => <ProductCard key={product.id} product={product} navigate={navigate} />)}
+            </div>
+          </section>
+        )}
+        <section className="mb-16 bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-gray-100">
+          <h2 className="text-2xl font-black text-slate-900 mb-3">How we choose lifestyle picks</h2>
+          <p className="text-slate-600 text-sm leading-relaxed max-w-3xl">{group.assessment}</p>
+        </section>
       </div>
     </div>
   );
@@ -793,9 +898,18 @@ const ProductReviewPage = ({ productId, products, catalogueStatus, navigate }) =
     return <NotFoundMessage navigate={navigate} title="Product unavailable" message="We couldn't load this product just now. Please try again in a moment." />;
   }
   if (!product) return <NotFoundMessage navigate={navigate} title="Product not found" message="This product does not exist, or has been removed from our reviews." />;
+  const group = groupOf(product.category);
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 animate-in fade-in">
-      <Breadcrumbs items={[{ name: 'Products', path: 'category', params: {id: product.category} }, { name: product.brand }]} navigate={navigate} />
+      <Breadcrumbs
+        items={[
+          ...(categoryById(product.category)
+            ? categoryCrumbs(categoryById(product.category))
+            : [{ name: 'Products', path: 'category', params: { id: product.category } }]),
+          { name: product.brand },
+        ]}
+        navigate={navigate}
+      />
       <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden mb-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10 p-6 md:p-10">
           <div className="relative">
@@ -806,11 +920,11 @@ const ProductReviewPage = ({ productId, products, catalogueStatus, navigate }) =
               category={product.category}
               priority
               className="w-full aspect-square rounded-2xl shadow-lg border border-gray-100 p-6"
-              caption={`Representative ${product.brand} photo — the exact model and capacity may differ. Check the retailer listing before you buy.`}
+              caption={group.photoCaption(product.brand)}
             />
             <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm p-3 rounded-xl shadow-sm border border-gray-100">
                <div className="text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-widest">Editorial Score</div>
-               <div className="text-2xl font-black text-blue-600 flex items-center gap-1">{product.editorialScore} <Star size={20} fill="currentColor" /></div>
+               <div className="text-2xl font-black text-blue-600 flex items-center gap-1">{formatScore(product.editorialScore)} <Star size={20} fill="currentColor" /></div>
                <div className="text-[9px] text-slate-400 mt-1">CoolLivingUAE assessment</div>
             </div>
           </div>
@@ -834,7 +948,9 @@ const ProductReviewPage = ({ productId, products, catalogueStatus, navigate }) =
               >
                 Check Price on Amazon.ae <ExternalLink size={18} />
               </AffiliateLink>
-              <button onClick={() => navigate('installation', { id: product.id })} className="w-full bg-green-600 text-white py-4 rounded-xl font-black hover:bg-green-700 transition-all shadow-lg flex items-center justify-center gap-2">Get Installation Quote <Settings size={18} /></button>
+              {group.installable && (
+                <button onClick={() => navigate('installation', { id: product.id })} className="w-full bg-green-600 text-white py-4 rounded-xl font-black hover:bg-green-700 transition-all shadow-lg flex items-center justify-center gap-2">Get Installation Quote <Settings size={18} /></button>
+              )}
             </div>
           </div>
         </div>
@@ -842,14 +958,7 @@ const ProductReviewPage = ({ productId, products, catalogueStatus, navigate }) =
 
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
         <h3 className="text-xl font-bold text-slate-900 mb-3">How we assess these products</h3>
-        <p className="text-slate-600 text-sm leading-relaxed">
-          Our verdicts are editorial opinions formed from manufacturer specifications,
-          published certifications and independent research, and the UAE service and
-          warranty terms each brand offers. We weight T3 compressor certification,
-          corrosion resistance, and after-sales coverage heavily, because those are the
-          factors that determine whether a unit still performs after several Gulf summers.
-          Where we have not tested a product ourselves, we do not claim to have done so.
-        </p>
+        <p className="text-slate-600 text-sm leading-relaxed">{group.assessment}</p>
       </div>
     </div>
   );
@@ -1813,6 +1922,25 @@ const ProductNotice = ({ notice, onDismiss }) => {
 /** Leads shown in the dashboard: the most recent this many. */
 const LEADS_LIMIT = 200;
 
+/** Dashboard badge and bar colours per category — literal class names, so Tailwind generates them. */
+const CATEGORY_STYLES = {
+  'smart-acs': { badge: 'bg-blue-100 text-blue-700', bar: 'bg-blue-500' },
+  'air-purifiers': { badge: 'bg-teal-100 text-teal-700', bar: 'bg-teal-500' },
+  'smart-thermostats': { badge: 'bg-orange-100 text-orange-700', bar: 'bg-orange-400' },
+  'gym-wear': { badge: 'bg-violet-100 text-violet-700', bar: 'bg-violet-500' },
+  'home-appliances': { badge: 'bg-slate-200 text-slate-700', bar: 'bg-slate-500' },
+  'dresses': { badge: 'bg-pink-100 text-pink-700', bar: 'bg-pink-500' },
+  'shoes': { badge: 'bg-amber-100 text-amber-800', bar: 'bg-amber-500' },
+};
+const categoryStyle = (id) => CATEGORY_STYLES[id] || { badge: 'bg-slate-100 text-slate-600', bar: 'bg-slate-400' };
+
+/** One <option> per category, grouped as on the site. */
+const CategoryOptions = () => Object.values(CATEGORY_GROUPS).map((group) => (
+  <optgroup key={group.id} label={group.name}>
+    {categoryList.filter((c) => c.group === group.id).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+  </optgroup>
+));
+
 /**
  * The product a lead was sent from: its current title while it is still in
  * the catalogue (linked to its page unless hidden), otherwise the title saved
@@ -2069,9 +2197,9 @@ const AdminDashboard = ({ adminProducts, catalogueOverrides, catalogueStatus, on
   });
   const newLeads    = leadList.filter(l => !l.status || l.status === 'new');
   const doneLeads   = leadList.filter(l => l.status === 'done');
-  const acCount     = liveProducts.filter(p => p.category === 'smart-acs').length;
-  const purCount    = liveProducts.filter(p => p.category === 'air-purifiers').length;
-  const thermoCount = liveProducts.filter(p => p.category === 'smart-thermostats').length;
+  const categoryBreakdown = categoryList.map(c => ({
+    id: c.id, label: c.name, count: liveProducts.filter(p => p.category === c.id).length,
+  }));
 
   const tabs = [
     { id: 'overview', label: 'Overview',    icon: BarChart },
@@ -2156,11 +2284,9 @@ const AdminDashboard = ({ adminProducts, catalogueOverrides, catalogueStatus, on
             <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
               <h3 className="font-black text-slate-900 mb-5 flex items-center gap-2"><LayoutList size={18} className="text-blue-600" /> Product Breakdown</h3>
               <div className="space-y-4">
-                {[
-                  { label: 'Smart ACs',         count: acCount,     total: liveProducts.length || 1, color: 'bg-blue-500' },
-                  { label: 'Air Purifiers',      count: purCount,    total: liveProducts.length || 1, color: 'bg-teal-500' },
-                  { label: 'Smart Thermostats',  count: thermoCount, total: liveProducts.length || 1, color: 'bg-orange-400' },
-                ].map(({ label, count, total, color }) => (
+                {categoryBreakdown.map(({ id, label, count }) => ({
+                  label, count, total: liveProducts.length || 1, color: categoryStyle(id).bar,
+                })).map(({ label, count, total, color }) => (
                   <div key={label}>
                     <div className="flex justify-between text-sm mb-1.5">
                       <span className="font-bold text-slate-700">{label}</span>
@@ -2362,9 +2488,7 @@ const AdminDashboard = ({ adminProducts, catalogueOverrides, catalogueStatus, on
               <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
                 className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500 cursor-pointer">
                 <option value="all">All Categories</option>
-                <option value="smart-acs">Smart ACs</option>
-                <option value="air-purifiers">Air Purifiers</option>
-                <option value="smart-thermostats">Smart Thermostats</option>
+                <CategoryOptions />
               </select>
             </div>
 
@@ -2399,13 +2523,13 @@ const AdminDashboard = ({ adminProducts, catalogueOverrides, catalogueStatus, on
                         </div>
                       </td>
                       <td className="p-5 hidden md:table-cell">
-                        <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${p.category === 'smart-acs' ? 'bg-blue-100 text-blue-700' : p.category === 'air-purifiers' ? 'bg-teal-100 text-teal-700' : 'bg-orange-100 text-orange-700'}`}>
-                          {p.category === 'smart-acs' ? 'Smart AC' : p.category === 'air-purifiers' ? 'Purifier' : 'Thermostat'}
+                        <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${categoryStyle(p.category).badge}`}>
+                          {categoryById(p.category)?.label || p.category}
                         </span>
                       </td>
                       <td className="p-5 hidden sm:table-cell font-black text-slate-900 text-sm">{formatPriceBand(p.priceBand)}</td>
                       <td className="p-5 hidden md:table-cell">
-                        <div className="flex items-center gap-1 text-sm font-bold text-amber-500">★ {p.editorialScore}</div>
+                        <div className="flex items-center gap-1 text-sm font-bold text-amber-500">★ {formatScore(p.editorialScore)}</div>
                       </td>
                       <td className="p-5 text-center">
                         <div className="flex items-center justify-center gap-2">
@@ -2458,9 +2582,7 @@ const AdminDashboard = ({ adminProducts, catalogueOverrides, catalogueStatus, on
                 <div>
                   <label className={labelCls}>Category</label>
                   <select className={inputCls} value={formState.category} onChange={e => setFormState({...formState, category: e.target.value})}>
-                    <option value="smart-acs">Smart ACs</option>
-                    <option value="air-purifiers">Air Purifiers</option>
-                    <option value="smart-thermostats">Smart Thermostats</option>
+                    <CategoryOptions />
                   </select>
                 </div>
                 <div>
@@ -2533,9 +2655,7 @@ const AdminDashboard = ({ adminProducts, catalogueOverrides, catalogueStatus, on
                 <div>
                   <label className={labelCls}>Category <span className="text-red-400">*</span></label>
                   <select className={inputCls} value={addForm.category} onChange={e => setAddForm({...addForm, category: e.target.value})}>
-                    <option value="smart-acs">Smart ACs</option>
-                    <option value="air-purifiers">Air Purifiers</option>
-                    <option value="smart-thermostats">Smart Thermostats</option>
+                    <CategoryOptions />
                   </select>
                 </div>
                 <div>
@@ -2659,19 +2779,20 @@ const AdminDashboard = ({ adminProducts, catalogueOverrides, catalogueStatus, on
 };
 
 // --- ABOUT SECTION ---
-const AboutUsSection = ({ productCount }) => (
+const AboutUsSection = ({ productCount, categoryCount }) => (
   <section className="bg-white py-16 px-4 border-t border-gray-100">
     <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
       <div className="space-y-6">
         <div className="inline-block bg-blue-50 text-blue-600 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">CoolLivingUAE Mission</div>
         <h2 className="text-3xl font-black text-slate-900 leading-tight">Expert Home Solutions for the <span className="text-blue-600 underline decoration-teal-400">Emirates Climate</span>.</h2>
-        <p className="text-slate-600 leading-relaxed">CoolLivingUAE exists to demystify cooling technology in the Gulf. With summer temperatures regularly exceeding 50°C, a standard appliance review isn't enough — a unit that performs well in a temperate market can lose capacity or trip entirely here. We assess every product against <strong>T3 Climate Standards</strong> (high ambient heat certification) so readers can tell the difference before they buy.</p>
+        <p className="text-slate-600 leading-relaxed">CoolLivingUAE exists to demystify cooling technology in the Gulf. With summer temperatures regularly exceeding 50°C, a standard appliance review isn't enough — a unit that performs well in a temperate market can lose capacity or trip entirely here. We assess every cooling product against <strong>T3 Climate Standards</strong> (high ambient heat certification) so readers can tell the difference before they buy.</p>
         <p className="text-slate-600 leading-relaxed">Our reviews are built from manufacturer specifications, independent certifications, published research, and the UAE service and warranty terms each brand actually offers. We explain energy consumption in DEWA terms, filtration in HEPA-standard terms, and smart home compatibility in practical terms — and we are explicit about where each claim comes from.</p>
+        <p className="text-slate-600 leading-relaxed">Our lifestyle picks — gym wear, home appliances, dresses and shoes — answer the same question: how well does it cope with the heat? We look at fabrics, sun protection and climate ratings, from what each brand publishes.</p>
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
             <ShieldCheck className="text-teal-500 mb-2" size={24} />
             <h4 className="font-bold text-slate-900 text-sm">T3 &amp; ESMA Focused</h4>
-            <p className="text-[10px] text-slate-500">We check hot-climate certification and UAE energy labelling on every unit.</p>
+            <p className="text-[10px] text-slate-500">We check hot-climate certification and UAE energy labelling on every cooling unit.</p>
           </div>
           <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
             <Activity className="text-blue-500 mb-2" size={24} />
@@ -2682,7 +2803,7 @@ const AboutUsSection = ({ productCount }) => (
       </div>
       <div className="aspect-video bg-gradient-to-br from-blue-600 to-teal-500 rounded-3xl flex flex-col items-center justify-center p-8 text-white shadow-2xl overflow-hidden relative">
         <div className="text-5xl font-black mb-2 tracking-tighter">{productCount}</div>
-        <div className="text-sm font-bold opacity-80 uppercase tracking-widest text-center">Products Reviewed Across 3 Categories</div>
+        <div className="text-sm font-bold opacity-80 uppercase tracking-widest text-center">Products Reviewed Across {categoryCount} Categories</div>
         <div className="absolute -bottom-10 -right-10 opacity-10 rotate-12"><Wind size={250} /></div>
       </div>
     </div>
@@ -2696,6 +2817,7 @@ const NAV_ITEMS = [
   { label: 'AC Calculator', to: 'calculator', isActive: (r) => r.path === 'calculator' },
   { label: 'Resident Reviews', to: 'reviews', isActive: (r) => r.path === 'reviews' },
   { label: 'Saving Guides', to: 'guides', isActive: (r) => r.path === 'guides' },
+  { label: 'Lifestyle', to: 'lifestyle', isActive: (r) => r.path === 'lifestyle' || (r.path === 'category' && categoryById(r.params?.id)?.group === 'lifestyle') },
   { label: 'Contact', to: 'contact', isActive: (r) => r.path === 'contact' },
 ];
 
@@ -2841,6 +2963,7 @@ export default function App() {
     switch (route.path) {
       case '/': return <HomePage products={products} categories={initialCategories} navigate={navigate} />;
       case 'category': return <CategoryPage categoryId={route.params.id} categories={initialCategories} products={products} navigate={navigate} />;
+      case 'lifestyle': return <LifestylePage categories={initialCategories} products={products} navigate={navigate} />;
       case 'product': return <ProductReviewPage productId={route.params.id} products={products} catalogueStatus={catalogue.status} navigate={navigate} />;
       case 'guides': return <GuidePage />;
       case 'reviews': return <ReviewsPage />;
@@ -2890,7 +3013,9 @@ export default function App() {
             <div className="bg-gradient-to-br from-blue-600 to-teal-500 text-white p-2 rounded-lg"><Wind size={24} /></div>
             <span className="font-extrabold text-2xl text-gray-900 tracking-tight">CoolLiving<span className="text-blue-600">UAE</span></span>
           </RouteLink>
-          <nav aria-label="Main" className="hidden md:flex space-x-8 font-bold text-gray-600 text-sm">
+          {/* Seven links need about 1000px: below lg they sit behind the menu
+              button, which keeps tablets from wrapping or clipping them. */}
+          <nav aria-label="Main" className="hidden lg:flex space-x-8 font-bold text-gray-600 text-sm">
             {NAV_ITEMS.map(item => {
               const active = item.isActive(route);
               return (
@@ -2904,12 +3029,12 @@ export default function App() {
           </nav>
           <button type="button" onClick={() => setMobileNavOpen(open => !open)}
             aria-expanded={mobileNavOpen} aria-controls="mobile-nav" aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
-            className="md:hidden p-2 -mr-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors">
+            className="lg:hidden p-2 -mr-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors">
             {mobileNavOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
         {mobileNavOpen && (
-          <nav id="mobile-nav" aria-label="Main" className="md:hidden absolute top-full inset-x-0 bg-white border-b border-gray-200 shadow-lg">
+          <nav id="mobile-nav" aria-label="Main" className="lg:hidden absolute top-full inset-x-0 bg-white border-b border-gray-200 shadow-lg">
             <ul className="max-w-7xl mx-auto px-4 py-2 divide-y divide-gray-100">
               {NAV_ITEMS.map(item => {
                 const active = item.isActive(route);
@@ -2930,13 +3055,13 @@ export default function App() {
       <main className="flex-grow">{renderPage()}</main>
       {/* The mission section is for visitors; under the dashboard it read as
           part of the admin page. */}
-      {route.path !== 'admin' && <AboutUsSection productCount={products.length} />}
+      {route.path !== 'admin' && <AboutUsSection productCount={products.length} categoryCount={initialCategories.length} />}
       <footer className="bg-slate-900 text-slate-400 py-12">
         <div className="max-w-7xl mx-auto px-4">
           {/* Five columns: the grid previously declared four, which pushed
               Support onto a row of its own. */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-10 mb-10 border-b border-slate-800 pb-10">
-            <div><div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">CoolLivingUAE</div><p className="text-xs leading-relaxed">Independent reviewer of cooling tech for T3 desert climates. Helping Dubai residents save on energy.</p></div>
+            <div><div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">CoolLivingUAE</div><p className="text-xs leading-relaxed">Independent reviewer of cooling tech and hot-weather essentials for T3 desert climates. Helping Dubai residents save on energy.</p></div>
             <div>
               <div className="text-white font-bold mb-4 uppercase text-xs tracking-widest">Quick Links</div>
               <ul className="text-xs space-y-2">
@@ -2944,6 +3069,7 @@ export default function App() {
                 {initialCategories.map(cat => (
                   <li key={cat.id}><RouteLink to="category" params={{ id: cat.id }} navigate={navigate} className="hover:text-white">{cat.name}</RouteLink></li>
                 ))}
+                <li><RouteLink to="lifestyle" navigate={navigate} className="hover:text-white">{CATEGORY_GROUPS.lifestyle.name}</RouteLink></li>
               </ul>
             </div>
             <div>

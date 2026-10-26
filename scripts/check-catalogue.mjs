@@ -13,6 +13,7 @@
 
 import assert from 'node:assert/strict';
 import { products } from '../src/data/products.js';
+import { categories, CATEGORY_IDS, groupOf } from '../src/data/categories.js';
 import {
   buildCatalogue, sanitizeEntry, diffAgainstBuiltIn, makeProductId, isValidProductId,
   validateProductForm, applyEdit, applyAdd, applyHide, applyRestore, applyRemoveAdded,
@@ -48,8 +49,33 @@ function check(name, fn) {
   try { fn(); passed += 1; } catch (error) { failures.push(`${name}\n      ${String(error.message).split('\n')[0]}`); }
 }
 
-check('all 60 built-ins pass as partial entries, unchanged', () => {
-  assert.equal(products.length, 60);
+check('every category has at least 8 built-in products, and every product a known category', () => {
+  for (const id of CATEGORY_IDS) {
+    const count = products.filter((p) => p.category === id).length;
+    assert.ok(count >= 8, `${id} has ${count} products`);
+  }
+  for (const p of products) assert.ok(CATEGORY_IDS.includes(p.category), `${p.id} is in unknown category ${p.category}`);
+  const ids = products.map((p) => p.id);
+  assert.equal(new Set(ids).size, ids.length, 'product ids must be unique');
+});
+
+check('the lifestyle catalogue has gym wear, home appliances, dresses and shoes, with buying tips', () => {
+  for (const id of ['gym-wear', 'home-appliances', 'dresses', 'shoes']) {
+    const category = categories.find((c) => c.id === id);
+    assert.ok(category, `${id} missing`);
+    assert.equal(category.group, 'lifestyle', `${id} group`);
+    assert.ok(Array.isArray(category.tips) && category.tips.length >= 3, `${id} needs at least 3 buying tips`);
+  }
+  assert.equal(groupOf('shoes').installable, false, 'lifestyle products take no installation requests');
+  assert.equal(groupOf('smart-acs').installable, true);
+});
+
+check('no product description claims testing we have not done', () => {
+  const claim = /\b(we|our team|i) (tested|wore|tried|used)\b|\bin our (tests|testing)\b|\bhands-on\b/i;
+  for (const p of products) assert.ok(!claim.test(p.description), `${p.id}: "${p.description.match(claim)?.[0]}"`);
+});
+
+check('every built-in passes as a partial entry, unchanged', () => {
   for (const p of products) {
     const clean = sanitizeEntry(p, { isBuiltIn: true });
     assert.ok(clean, `${p.id} rejected`);
@@ -57,15 +83,15 @@ check('all 60 built-ins pass as partial entries, unchanged', () => {
   }
 });
 
-check('all 60 built-ins also pass as complete records, so the limits fit real data', () => {
+check('every built-in also passes as a complete record, so the limits fit real data', () => {
   for (const p of products) assert.ok(sanitizeEntry({ ...p, addedAt: 1 }, { isBuiltIn: false }), `${p.id} rejected`);
 });
 
 check('missing or malformed overrides reproduce the built-in catalogue', () => {
   for (const overrides of [{}, undefined, null, 'garbage', []]) {
     const { visible, admin } = buildCatalogue(products, overrides);
-    assert.equal(visible.length, 60);
-    assert.equal(admin.length, 60);
+    assert.equal(visible.length, products.length);
+    assert.equal(admin.length, products.length);
     visible.forEach((p, i) => {
       for (const field of Object.keys(products[i])) assert.deepEqual(p[field], products[i][field]);
       assert.equal(p.isEdited, false);
@@ -85,7 +111,7 @@ check('a partial override changes only its own field', () => {
 
 check('a hidden built-in leaves the public list but stays in the admin list', () => {
   const { visible, admin } = buildCatalogue(products, { 'thermo-4': { hidden: true } });
-  assert.equal(visible.length, 59);
+  assert.equal(visible.length, products.length - 1);
   assert.ok(!visible.some((p) => p.id === 'thermo-4'));
   const row = admin.find((p) => p.id === 'thermo-4');
   assert.equal(row.isHidden, true);
@@ -101,7 +127,7 @@ check('invalid overrides are ignored and the built-in shown as-is', () => {
     'ac-5': { hidden: true, title: 'x' }, // invalid title voids the whole entry, hide included
   };
   const { visible } = buildCatalogue(products, bad);
-  assert.equal(visible.length, 60);
+  assert.equal(visible.length, products.length);
   for (const id of Object.keys(bad)) {
     const shown = visible.find((p) => p.id === id);
     for (const field of COMPARED_FIELDS) assert.deepEqual(shown[field], builtInsById.get(id)[field], `${id}.${field}`);
@@ -125,8 +151,8 @@ check('incomplete, invalid or badly keyed added products are left out', () => {
     'no-timestamp-aaaa': { ...VALID_NEW, addedAt: undefined },
     'bad-score-aaaa': { ...VALID_NEW, editorialScore: 9 },
   });
-  assert.equal(visible.length, 60);
-  assert.equal(admin.length, 60);
+  assert.equal(visible.length, products.length);
+  assert.equal(admin.length, products.length);
 });
 
 check('diffAgainstBuiltIn returns only the fields that changed', () => {

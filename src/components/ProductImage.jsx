@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AirVent, Wind, Thermometer } from 'lucide-react';
+import { AirVent, Wind, Thermometer, Dumbbell, Refrigerator, Shirt, Footprints } from 'lucide-react';
 
 /**
  * CoolLivingUAE — Product photo with an honest fallback
@@ -19,6 +19,10 @@ const CATEGORY_ICONS = {
   'smart-acs': AirVent,
   'air-purifiers': Wind,
   'smart-thermostats': Thermometer,
+  'gym-wear': Dumbbell,
+  'home-appliances': Refrigerator,
+  'dresses': Shirt,
+  'shoes': Footprints,
 };
 
 /**

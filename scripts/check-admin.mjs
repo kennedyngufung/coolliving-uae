@@ -19,6 +19,7 @@ import { isDeepStrictEqual } from 'util';
 import puppeteer from 'puppeteer';
 import { createServer } from 'vite';
 import { products as builtIns } from '../src/data/products.js';
+import { CATEGORY_IDS } from '../src/data/categories.js';
 
 const fake = (name) => fileURLToPath(new URL(`./admin-fakes/${name}.js`, import.meta.url));
 const AC1 = builtIns.find((p) => p.id === 'ac-1');
@@ -227,6 +228,20 @@ try {
     report(published && isDeepStrictEqual(added?.priceBand, { min: 2300, max: 2800 }),
       'Publish with valid details adds the product',
       published ? `stored: ${JSON.stringify(added)}` : await alertText(page));
+    await page.close();
+  }
+
+  {
+    const page = await openDashboard({});
+    await fillAddForm(page, '2300');
+    const offered = await page.evaluate(() => [...document.querySelector('select').options].map((o) => o.value));
+    await page.select('select', 'shoes');
+    await clickButton(page, 'Publish Product');
+    const published = await shows(page, '[role="status"]', /^Published/);
+    const added = Object.values((await storedProducts(page)) || {}).find((entry) => entry.title === NEW_PRODUCT.title);
+    report(isDeepStrictEqual(offered, CATEGORY_IDS) && published && added?.category === 'shoes',
+      'the Add form offers every category and publishes into a lifestyle one',
+      `offered: ${offered.join(', ')}; stored category: ${added?.category}` + (published ? '' : `; message: ${await alertText(page)}`));
     await page.close();
   }
 

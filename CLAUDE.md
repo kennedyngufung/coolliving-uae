@@ -21,7 +21,7 @@ npm run build            # Production build to dist/
 npm run lint             # ESLint
 npm run generate-sitemap # Regenerate public/sitemap.xml + robots.txt from the catalogue
 npm run build:prod       # build + generate-sitemap
-npm run prerender        # Puppeteer static prerender of all 73 crawlable URLs
+npm run prerender        # Puppeteer static prerender of all 110 crawlable URLs
 npm run check-images     # Product image rules; add `-- --network` to fetch every remote image
 npm run generate-brand-assets  # Rebuild favicon/icons/logo/og-default.jpg in public/ from the header logo
 npm run check-catalogue  # Rules for admin catalogue changes (src/catalogueMerge.js); no network
@@ -149,8 +149,12 @@ No. 15 of 2020 on Consumer Protection all bear on this.
 
 ### Data flow
 
-- `src/data/products.js` — 60 products (20 per category), flattened and exported with `category`
-  stamped on. Also exports `formatPriceBand()` and `priceBandMidpoint()`.
+- `src/data/products.js` — 92 products, flattened and exported with `category` stamped on: 60
+  cooling products (20 per category) defined there, plus 32 lifestyle picks (8 per category) from
+  `src/data/lifestyle.js`. Also exports `formatPriceBand()`, `formatScore()` (always one decimal,
+  so 4 shows as "4.0") and `priceBandMidpoint()`.
+- `src/data/categories.js` — the one list of categories (see "Categories and the Lifestyle
+  catalogue").
 - `src/data/calculatorAcs.js` — 21 units the BTU calculator recommends. Sorted by band midpoint,
   since exact prices no longer exist.
 - Data lives in `src/data/` specifically so `scripts/generate-sitemap.mjs` can import it. A Node
@@ -159,6 +163,34 @@ No. 15 of 2020 on Consumer Protection all bear on this.
 
 `src/App.jsx` is ~2,750 lines and holds most page components. It is large; prefer extracting
 into `src/components/` when adding substantial new surface rather than growing it further.
+
+### Categories and the Lifestyle catalogue
+
+`src/data/categories.js` is the single list of categories. The pages, the admin dashboard's
+dropdowns and badges, the catalogue rules (`CATEGORIES` in `src/catalogueMerge.js`), the routes and
+the sitemap all read it, so a category added there appears everywhere. It is plain data so Node
+scripts can import it; the icons live in `CATEGORY_ICONS` in `App.jsx` and in
+`src/components/ProductImage.jsx` — add one in both for a new category.
+
+Every category belongs to a group, and the group decides what differs on a product page:
+
+- `cooling` — Smart ACs, Air Purifiers, Smart Thermostats. Cards and pages offer an installation
+  request, and the assessment text weights T3 certification.
+- `lifestyle` — Gym Wear, Home Appliances, Dresses, Shoes, shown under the `/lifestyle` hub page.
+  No installation requests (`/installation/<lifestyle id>` is treated as a general enquiry), a
+  lifestyle assessment text, and a buying-tips box on each category page (`tips` in the data).
+
+Lifestyle picks follow the same content rules as everything else, and the scope is deliberate:
+every pick is chosen for how it copes with the UAE heat (breathable fabrics, sun protection,
+climate-class-T fridges), which keeps the site one coherent "living cool in the UAE" topic for
+Google and an Amazon reviewer rather than a general store. Copy states what brands publish about
+their materials; nothing is wear-tested and nothing claims to be — `npm run check-catalogue` fails
+on phrases like "we tested". Photos are `''` (neutral tile) until verified; the owner can add
+links in the dashboard. The homepage hero counts cooling products only ("reviews of 60 air
+conditioners…"), since its sentence names those three categories.
+
+The header shows its seven links from the `lg` breakpoint up; below that they sit behind the
+menu button, because seven links need about 1,000px and wrapped or clipped on tablets.
 
 ### Catalogue overrides
 

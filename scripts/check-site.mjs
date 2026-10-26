@@ -24,6 +24,7 @@ import puppeteer from 'puppeteer';
 import { products as builtIns } from '../src/data/products.js';
 import { crawlablePaths } from '../src/routes.js';
 import { buildCatalogue } from '../src/catalogueMerge.js';
+import { groupOf } from '../src/data/categories.js';
 
 const BASE = (process.env.BASE || 'http://localhost:4173').replace(/\/+$/, '');
 const SITE = (process.env.VITE_SITE_URL || 'https://coollivinguae.com').replace(/\/+$/, '');
@@ -182,12 +183,102 @@ async function productStates(browser) {
   }
 }
 
+const LIFESTYLE = ['gym-wear', 'home-appliances', 'dresses', 'shoes'];
+const hasInstallButton = (page) => page.evaluate(() => [...document.querySelectorAll('button')].some((b) => /Installation/.test(b.textContent)));
+
+async function lifestyle(browser, catalogue) {
+  console.log('\n== lifestyle catalogue');
+
+  {
+    const { page } = await openPage(browser, '/lifestyle');
+    await page.waitForFunction(() => document.querySelector('h1'), { timeout: 15000 }).catch(() => {});
+    const state = await pageState(page);
+    const links = await page.evaluate(() => [...document.querySelectorAll('main a[href^="/category/"]')].map((a) => a.getAttribute('href')));
+    const missing = LIFESTYLE.filter((id) => !links.includes(`/category/${id}`));
+    report(state.h1 !== '404 — Page Not Found' && state.robots === 'index, follow' && missing.length === 0,
+      '/lifestyle links to all four lifestyle categories', `(h1 "${state.h1}", robots "${state.robots}", missing: ${missing.join(', ') || 'none'})`);
+    await page.close();
+  }
+
+  {
+    const { page } = await openPage(browser, '/');
+    await page.waitForFunction(() => document.querySelector('h1'), { timeout: 15000 }).catch(() => {});
+    const home = await page.evaluate(() => ({
+      navLink: [...document.querySelectorAll('header a')].some((a) => a.getAttribute('href') === '/lifestyle'),
+      categoryLinks: [...document.querySelectorAll('main a[href^="/category/"]')].map((a) => a.getAttribute('href')),
+      hero: document.querySelector('main p')?.textContent || '',
+    }));
+    const coolingCount = catalogue.visible.filter((p) => groupOf(p.category).id === 'cooling').length;
+    const missing = LIFESTYLE.filter((id) => !home.categoryLinks.includes(`/category/${id}`));
+    report(home.navLink && missing.length === 0 && home.hero.includes(`reviews of ${coolingCount} air conditioners`),
+      'the menu links to Lifestyle, the homepage to each lifestyle category, and the hero counts only cooling products',
+      `(menu link: ${home.navLink}; missing: ${missing.join(', ') || 'none'}; hero: "${home.hero.slice(0, 90)}")`);
+    await page.close();
+  }
+
+  for (const [path, offersInstall] of [['/product/ac-1', true], ['/product/gym-1', false], ['/product/dress-1', false], ['/product/shoe-1', false], ['/product/appliance-1', false]]) {
+    const { page } = await openPage(browser, path);
+    await page.waitForFunction(() => document.querySelector('h1'), { timeout: 15000 }).catch(() => {});
+    const state = await pageState(page);
+    const install = await hasInstallButton(page);
+    report(state.h1 !== '' && state.h1 !== 'Product not found' && install === offersInstall,
+      `${path} ${offersInstall ? 'offers' : 'offers no'} installation quote`, `(h1 "${state.h1}", installation button: ${install})`);
+    await page.close();
+  }
+
+  for (const [id, offersInstall] of [['smart-acs', true], ['shoes', false]]) {
+    const { page } = await openPage(browser, `/category/${id}`);
+    await page.waitForFunction(() => document.querySelector('article'), { timeout: 15000 }).catch(() => {});
+    const cards = await page.evaluate(() => document.querySelectorAll('article').length);
+    const install = await hasInstallButton(page);
+    report(cards > 0 && install === offersInstall,
+      `/category/${id} cards ${offersInstall ? 'offer' : 'offer no'} installation request`, `(${cards} cards, installation button: ${install})`);
+    await page.close();
+  }
+}
+
+async function presentation(browser) {
+  console.log('\n== header and scores');
+
+  // Every visible menu link must sit on one line inside the screen; where the
+  // links do not fit, they must be hidden behind the menu button instead.
+  for (const width of [768, 1024, 1280]) {
+    const { page } = await openPage(browser, '/');
+    await page.setViewport({ width, height: 800 });
+    await new Promise((r) => setTimeout(r, 300));
+    const header = await page.evaluate(() => {
+      const shown = (el) => el.offsetParent !== null;
+      const links = [...document.querySelectorAll('header nav[aria-label="Main"] a')].filter(shown);
+      const broken = links.filter((a) => {
+        const r = a.getBoundingClientRect();
+        return r.right > window.innerWidth + 1 || r.height > parseFloat(getComputedStyle(a).lineHeight) * 1.5;
+      }).map((a) => a.textContent.trim());
+      const menuButton = [...document.querySelectorAll('header button')].some((b) => /menu/i.test(b.getAttribute('aria-label') || '') && shown(b));
+      return { visibleLinks: links.length, broken, menuButton };
+    });
+    report(header.broken.length === 0 && (header.visibleLinks > 0 || header.menuButton),
+      `the header menu fits at ${width}px`, `(${JSON.stringify(header)})`);
+    await page.close();
+  }
+
+  {
+    const { page } = await openPage(browser, '/category/shoes');
+    await page.waitForFunction(() => document.querySelector('article'), { timeout: 15000 }).catch(() => {});
+    const scores = await page.evaluate(() => [...document.querySelectorAll('article')].map((a) => a.textContent.match(/Our score ([\d.]+)/)?.[1] || ''));
+    const bad = scores.filter((s) => !/^\d\.\d$/.test(s));
+    report(scores.length > 0 && bad.length === 0, 'editorial scores always show one decimal', `(not one decimal: ${bad.join(', ') || 'none'})`);
+    await page.close();
+  }
+}
+
 const catalogue = await expectedCatalogue();
 console.log(`Checking ${BASE} — ${catalogue.visible.length} visible products, ${catalogue.admin.length - catalogue.visible.length} hidden.`);
 const browser = await puppeteer.launch({ headless: true });
 try {
   await crawl(browser, catalogue);
   await productStates(browser);
+  await lifestyle(browser, catalogue);
+  await presentation(browser);
 } finally {
   await browser.close();
 }

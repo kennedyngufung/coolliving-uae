@@ -18,7 +18,9 @@
  * ---------------------------------------------------------------------------
  */
 
-export const CATEGORIES = ['smart-acs', 'air-purifiers', 'smart-thermostats'];
+import { CATEGORY_IDS } from './data/categories.js';
+
+export const CATEGORIES = CATEGORY_IDS;
 
 /** Fields the dashboard edits. Any other key on an entry is ignored. */
 export const EDITABLE_FIELDS = [
@@ -43,7 +45,7 @@ export const FIELD_LIMITS = {
 const FIELD_MESSAGES = {
   title: `Enter a title of ${FIELD_LIMITS.title.min}–${FIELD_LIMITS.title.max} characters.`,
   brand: `Enter a brand of ${FIELD_LIMITS.brand.min}–${FIELD_LIMITS.brand.max} characters.`,
-  category: 'Choose one of the three categories.',
+  category: 'Choose one of the categories.',
   priceBand: 'Enter the price range in whole dirhams, e.g. 1750 and 2200, with the maximum at least the minimum.',
   editorialScore: 'Enter an editorial score from 0 to 5.',
   image: 'The photo link must start with https://, or leave it empty.',

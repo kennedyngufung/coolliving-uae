@@ -27,6 +27,7 @@ const META = {
   '/':           { changefreq: 'daily',   priority: '1.0' },
   '/guides':     { changefreq: 'weekly',  priority: '0.9' },
   '/calculator': { changefreq: 'monthly', priority: '0.9' },
+  '/lifestyle':  { changefreq: 'weekly',  priority: '0.8' },
   '/reviews':    { changefreq: 'weekly',  priority: '0.8' },
   '/contact':    { changefreq: 'monthly', priority: '0.6' },
   '/privacy':    { changefreq: 'yearly',  priority: '0.3' },
